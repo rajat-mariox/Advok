@@ -1,0 +1,16 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# Dependencies & build output (safety net for all sub-projects)
+node_modules/
+
+# Environment secrets — never commit these
+.env
+.env.*
+!.env.example
+
+# Local tool settings
+.claude/settings.local.json
