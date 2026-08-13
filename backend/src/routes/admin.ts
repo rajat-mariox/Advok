@@ -43,6 +43,36 @@ router.delete('/users/:id', (req, res) => {
   return res.json({ ok: true });
 });
 
+/** Suspends any (non-admin) account. Body: { reason?: string }. */
+router.post('/users/:id/suspend', (req, res) => {
+  const db = getDb();
+  const user = db.users.find((u) => u.id === req.params.id && u.role !== 'admin');
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.status === 'suspended') return res.json({ user: publicUser(user) });
+  user.statusBeforeSuspension = user.status;
+  user.status = 'suspended';
+  user.suspensionReason =
+    typeof req.body?.reason === 'string' && req.body.reason.trim()
+      ? req.body.reason.trim()
+      : undefined;
+  saveDb();
+  return res.json({ user: publicUser(user) });
+});
+
+/** Lifts a suspension, restoring the status the account had before it. */
+router.post('/users/:id/unsuspend', (req, res) => {
+  const db = getDb();
+  const user = db.users.find((u) => u.id === req.params.id && u.role !== 'admin');
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.status !== 'suspended') return res.json({ user: publicUser(user) });
+  user.status =
+    user.statusBeforeSuspension ?? (user.role === 'client' ? 'active' : 'approved');
+  user.statusBeforeSuspension = undefined;
+  user.suspensionReason = undefined;
+  saveDb();
+  return res.json({ user: publicUser(user) });
+});
+
 /** Counts shown as badges in the admin panel. */
 router.get('/registrations/counts', (_req, res) => {
   const db = getDb();

@@ -124,7 +124,7 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
                   ),
                 ),
                 Text(
-                  'Legal Assistant · Always On',
+                  'AI Legal Assistant · Not legal advice',
                   style: TextStyle(
                     fontSize: 11,
                     height: 15 / 11,
@@ -195,8 +195,9 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              'Ask any legal question. I provide instant, accurate guidance '
-              'based on US law.',
+              'Get general legal information based on U.S. law. ADVOK AI is '
+              'not a lawyer and does not replace advice from a licensed '
+              'attorney.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,

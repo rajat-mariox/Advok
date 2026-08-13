@@ -2,26 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../Services/post_login_navigator.dart';
+import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
+import '../SplashScreen/splash_screen.dart';
 
-/// Shown after login when the admin has rejected the registration. Displays
-/// the rejection reason and lets the user fix their details and reapply.
-class RegistrationRejectedScreen extends StatelessWidget {
-  const RegistrationRejectedScreen({
+/// Shown after login when the admin has suspended this account (any role).
+/// The user is locked out until the suspension is lifted from the admin panel.
+class AccountSuspendedScreen extends StatelessWidget {
+  const AccountSuspendedScreen({
     super.key,
     required this.role,
     this.reason,
   });
 
-  /// Backend role: advocate, law_student or law_firm.
+  /// Backend role: client, advocate, law_student or law_firm.
   final String role;
   final String? reason;
 
   String get _roleIcon {
     switch (role) {
+      case 'client':
+        return 'assets/icons/ic_role_client.svg';
       case 'advocate':
         return 'assets/icons/ic_role_advocate.svg';
       case 'law_student':
@@ -33,6 +36,8 @@ class RegistrationRejectedScreen extends StatelessWidget {
 
   String get _roleLabel {
     switch (role) {
+      case 'client':
+        return 'Client';
       case 'advocate':
         return CountryCatalog.terms.lawyerSingular;
       case 'law_student':
@@ -64,7 +69,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
                       const SizedBox(height: 28),
                       _buildReasonCard(),
                       const SizedBox(height: 16),
-                      _buildNextStepsCard(),
+                      _buildSupportCard(),
                     ],
                   ),
                 ),
@@ -73,10 +78,10 @@ class RegistrationRejectedScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 child: Column(
                   children: [
-                    _buildReapplyButton(context),
+                    _buildSignOutButton(context),
                     const SizedBox(height: 12),
                     const Text(
-                      'Your new submission will be reviewed again by our team.',
+                      'Access is restored automatically once the suspension is lifted.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 11,
@@ -126,7 +131,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
                   ),
                   child: Center(
                     child: SvgPicture.asset(
-                      'assets/icons/ic_clear.svg',
+                      'assets/icons/ic_lock.svg',
                       width: 12,
                       height: 12,
                       colorFilter: const ColorFilter.mode(
@@ -142,7 +147,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         const Text(
-          'Registration Not Approved',
+          'Account Suspended',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 24,
@@ -156,8 +161,8 @@ class RegistrationRejectedScreen extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
-            'Your $_roleLabel registration could not be approved this time. '
-            'Review the reason below, update your details and reapply.',
+            'Your $_roleLabel account has been temporarily suspended by our '
+            'team and is not accessible right now.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -182,7 +187,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'REASON FROM OUR REVIEW TEAM',
+            'REASON FROM OUR TEAM',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -207,7 +212,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNextStepsCard() {
+  Widget _buildSupportCard() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -218,7 +223,7 @@ class RegistrationRejectedScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
           Text(
-            'WHAT TO DO NEXT',
+            'THINK THIS IS A MISTAKE?',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -227,16 +232,24 @@ class RegistrationRejectedScreen extends StatelessWidget {
               color: AppColors.textGrey,
             ),
           ),
-          SizedBox(height: 12),
-          _StepRow('Read the reason shared by the review team'),
-          _StepRow('Correct or update the details in your form'),
-          _StepRow('Submit again — reviews typically take 24–48 hrs', isLast: true),
+          SizedBox(height: 10),
+          Text(
+            'Contact our support team at support@advok.app and include your '
+            'registered phone number. We usually respond within 24 hours.',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 19.5 / 13,
+              letterSpacing: -0.08,
+              color: AppColors.textPrimary,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildReapplyButton(BuildContext context) {
+  Widget _buildSignOutButton(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       height: 50,
@@ -253,10 +266,16 @@ class RegistrationRejectedScreen extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            onTap: () => PostLoginNavigator.startOnboarding(context, role),
+            onTap: () {
+              Session.clear();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const SplashScreen()),
+                (route) => false,
+              );
+            },
             child: const Center(
               child: Text(
-                'Update & Reapply',
+                'Sign Out',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -267,47 +286,6 @@ class RegistrationRejectedScreen extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StepRow extends StatelessWidget {
-  const _StepRow(this.text, {this.isLast = false});
-
-  final String text;
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            margin: const EdgeInsets.only(top: 7),
-            decoration: const BoxDecoration(
-              color: AppColors.textGrey555,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 19.5 / 13,
-                letterSpacing: -0.08,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

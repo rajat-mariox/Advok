@@ -143,7 +143,14 @@ class AdvocateProfileScreen extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.asset(advocate.image, fit: BoxFit.cover),
+          // Backend advocates carry their photo as bytes and have no asset
+          // path; fall back to a dark backdrop so the hero never crashes.
+          if (advocate.photoBytes != null)
+            Image.memory(advocate.photoBytes!, fit: BoxFit.cover)
+          else if (advocate.image.isNotEmpty)
+            Image.asset(advocate.image, fit: BoxFit.cover)
+          else
+            const ColoredBox(color: Color(0xFF2A2A2A)),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -316,7 +323,7 @@ class AdvocateProfileScreen extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: advocate.price,
+                        text: advocate.price.isEmpty ? '—' : advocate.price,
                         style: const TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,

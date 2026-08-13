@@ -1,8 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconSearch } from '../components/Icon';
-import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
+import {
+  AccountActions,
+  Avatar,
+  Badge,
+  Drawer,
+  FilterChips,
+  InfoRow,
+  PageHeader,
+} from '../components/ui';
 import type { AdminClient } from '../types';
-import { deleteBackendUser, fetchBackendUsers, toAdminClient } from '../utils/backend';
+import {
+  deleteBackendUser,
+  fetchBackendUsers,
+  suspendBackendUser,
+  toAdminClient,
+  unsuspendBackendUser,
+} from '../utils/backend';
 
 const FILTERS = ['All', 'Active', 'Suspended'];
 
@@ -35,12 +49,20 @@ export default function ClientsPage() {
 
   const selected = clients.find((c) => c.id === selectedId) ?? null;
 
-  const toggleStatus = (id: string) => {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, status: c.status === 'Active' ? 'Suspended' : 'Active' } : c,
-      ),
-    );
+  const suspendClient = async (id: string) => {
+    const reason = window.prompt('Reason for suspension (optional):');
+    if (reason === null) return;
+    const ok = await suspendBackendUser(id, reason.trim() || undefined);
+    if (ok) {
+      setClients((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Suspended' } : c)));
+    }
+  };
+
+  const unsuspendClient = async (id: string) => {
+    const ok = await unsuspendBackendUser(id);
+    if (ok) {
+      setClients((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Active' } : c)));
+    }
   };
 
   const deleteClient = async (id: string) => {
@@ -92,7 +114,7 @@ export default function ClientsPage() {
               <tr key={c.id} className="clickable" onClick={() => setSelectedId(c.id)}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={c.name} size={34} />
+                    <Avatar name={c.name} photo={c.photo} size={34} />
                     <div>
                       <div className="cell-strong">{c.name}</div>
                       <div className="cell-sub">{c.email}</div>
@@ -125,26 +147,16 @@ export default function ClientsPage() {
           title="Client Details"
           onClose={() => setSelectedId(null)}
           footer={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button
-                className={selected.status === 'Active' ? 'btn-secondary' : 'btn-primary'}
-                style={{ width: '100%', height: 44, borderRadius: 14 }}
-                onClick={() => toggleStatus(selected.id)}
-              >
-                {selected.status === 'Active' ? 'Suspend Account' : 'Reactivate Account'}
-              </button>
-              <button
-                className="btn-danger"
-                style={{ width: '100%', height: 44, borderRadius: 14 }}
-                onClick={() => deleteClient(selected.id)}
-              >
-                Delete Account
-              </button>
-            </div>
+            <AccountActions
+              suspended={selected.status === 'Suspended'}
+              onSuspend={() => suspendClient(selected.id)}
+              onUnsuspend={() => unsuspendClient(selected.id)}
+              onDelete={() => deleteClient(selected.id)}
+            />
           }
         >
           <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.name} size={56} />
+            <Avatar name={selected.name} photo={selected.photo} size={56} />
             <div>
               <div className="row" style={{ gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.name}</span>

@@ -10,9 +10,17 @@ import { authFetch } from './auth';
 export interface BackendUser {
   id: string;
   role: 'client' | 'advocate' | 'law_student' | 'law_firm';
-  status: 'new' | 'active' | 'onboarding_required' | 'pending_approval' | 'approved' | 'rejected';
+  status:
+    | 'new'
+    | 'active'
+    | 'onboarding_required'
+    | 'pending_approval'
+    | 'approved'
+    | 'rejected'
+    | 'suspended';
   phone?: string;
   countryCode?: string;
+  country?: string;
   createdAt: string;
   onboardedAt?: string;
   reviewedAt?: string;
@@ -48,6 +56,21 @@ export async function deleteBackendUser(id: string): Promise<boolean> {
   return res.ok;
 }
 
+/** Suspends an account (any role); the app locks the user out until lifted. */
+export async function suspendBackendUser(id: string, reason?: string): Promise<boolean> {
+  const res = await authFetch(`/admin/users/${id}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+  return res.ok;
+}
+
+/** Lifts a suspension, restoring the status the account had before it. */
+export async function unsuspendBackendUser(id: string): Promise<boolean> {
+  const res = await authFetch(`/admin/users/${id}/unsuspend`, { method: 'POST' });
+  return res.ok;
+}
+
 export function formatDate(iso?: string): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString(undefined, {
@@ -60,26 +83,40 @@ export function formatDate(iso?: string): string {
 function verificationLabel(
   status: BackendUser['status'],
   pendingLabel: string,
-): 'Verified' | 'Rejected' | string {
+): 'Verified' | 'Rejected' | 'Suspended' | string {
   if (status === 'approved') return 'Verified';
   if (status === 'rejected') return 'Rejected';
+  if (status === 'suspended') return 'Suspended';
   return pendingLabel;
 }
 
 /** Only users whose onboarding is actually submitted show up on review pages. */
 export function hasSubmittedProfile(u: BackendUser): boolean {
-  return !!u.profile && ['pending_approval', 'approved', 'rejected'].includes(u.status);
+  return (
+    !!u.profile &&
+    ['pending_approval', 'approved', 'rejected', 'suspended'].includes(u.status)
+  );
+}
+
+/** The OTP login number, e.g. "+91 9876543210". */
+function loginPhone(u: BackendUser): string {
+  return `${u.countryCode ?? ''} ${u.phone ?? ''}`.trim() || '—';
 }
 
 export function toAdminAdvocate(u: BackendUser): AdminAdvocate {
   const p = u.profile ?? {};
   return {
     id: u.id,
+    country: u.country,
+    photo: p.photo || undefined,
     name: p.professional?.fullName ?? 'Advocate',
     email: p.professional?.email ?? '—',
-    type: p.advocateType === 'senior' ? 'Senior Advocate' : 'Junior Advocate',
+    phone: loginPhone(u),
+    // US profiles carry a firm role; Junior/Senior is the India classification.
+    type: p.firmRole || (p.advocateType === 'senior' ? 'Senior Advocate' : 'Junior Advocate'),
+    yearsInPractice: p.yearsInPractice || undefined,
     specialty: p.professional?.practiceArea ?? '—',
-    barRegNo: p.professional?.barRegistrationNumber ?? '—',
+    barRegNo: p.professional?.licenseNumber ?? p.professional?.barRegistrationNumber ?? '—',
     court: p.professional?.primaryCourt ?? '—',
     state: p.location?.state ?? '—',
     city: p.location?.district ?? '—',
@@ -99,13 +136,15 @@ export function toAdminStudent(u: BackendUser): AdminStudent {
   const p = u.profile ?? {};
   return {
     id: u.id,
+    photo: p.photo || undefined,
     fullName: p.fullName ?? 'Law Student',
     email: '—',
+    phone: loginPhone(u),
     college: p.college ?? '—',
     course: p.course ?? '—',
     academicYear: p.academicYear,
     idCardFile: p.idCardFileName || undefined,
-    location: `${u.countryCode ?? ''} ${u.phone ?? ''}`.trim() || '—',
+    location: loginPhone(u),
     casesRead: 0,
     savedItems: 0,
     mentors: 0,
@@ -125,7 +164,9 @@ export function toAdminLawFirm(u: BackendUser): AdminLawFirm {
   }));
   return {
     id: u.id,
+    photo: p.photo || undefined,
     firmName: p.firmName ?? 'Law Firm',
+    phone: loginPhone(u),
     foundedYear: p.foundedYear ?? '—',
     contactPersonName: p.contactPerson ?? '—',
     officialEmail: p.officialEmail ?? '—',
@@ -148,16 +189,19 @@ export function toAdminLawFirm(u: BackendUser): AdminLawFirm {
 }
 
 export function toAdminClient(u: BackendUser): AdminClient {
+  const p = u.profile ?? {};
   const phone = `${u.countryCode ?? ''} ${u.phone ?? ''}`.trim();
   return {
     id: u.id,
-    name: phone || 'Client',
-    email: '—',
+    photo: p.photo || undefined,
+    // Clients can set a display name/email from the app's Edit Profile.
+    name: p.fullName || phone || 'Client',
+    email: p.email || '—',
     location: '—',
     consultations: 0,
     activeCases: 0,
     savedAdvocates: 0,
-    status: 'Active',
+    status: u.status === 'suspended' ? 'Suspended' : 'Active',
     joined: formatDate(u.createdAt),
   };
 }

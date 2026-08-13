@@ -13,6 +13,7 @@ interface Registration {
   status: RegStatus;
   phone?: string;
   countryCode?: string;
+  country?: string;
   createdAt: string;
   onboardedAt?: string;
   reviewedAt?: string;
@@ -182,7 +183,7 @@ export default function ApprovalsPage() {
               <tr key={r.id} className="clickable" onClick={() => { setSelectedId(r.id); setRejecting(false); }}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={displayName(r)} size={34} square />
+                    <Avatar name={displayName(r)} photo={r.profile?.photo} size={34} square />
                     <div className="cell-strong">{displayName(r)}</div>
                   </div>
                 </td>
@@ -267,7 +268,7 @@ export default function ApprovalsPage() {
           }
         >
           <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={displayName(selected)} size={56} square />
+            <Avatar name={displayName(selected)} photo={selected.profile?.photo} size={56} square />
             <div>
               <div className="row" style={{ gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{displayName(selected)}</span>
@@ -290,12 +291,28 @@ export default function ApprovalsPage() {
             <>
               <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Professional Details</div>
               <InfoRow k="Full Name" v={selected.profile.professional?.fullName ?? '—'} />
-              <InfoRow k="Type" v={selected.profile.advocateType === 'senior' ? 'Senior Advocate' : 'Junior Advocate'} />
-              {selected.profile.advocateType === 'junior' && (
+              <InfoRow
+                k="Type"
+                v={
+                  selected.profile.firmRole ||
+                  (selected.profile.advocateType === 'senior' ? 'Senior Advocate' : 'Junior Advocate')
+                }
+              />
+              {selected.profile.yearsInPractice && (
+                <InfoRow k="Years in Practice" v={selected.profile.yearsInPractice} />
+              )}
+              {selected.profile.advocateType === 'junior' && !selected.profile.firmRole && (
                 <InfoRow k="Senior Advocate" v={selected.profile.professional?.seniorAdvocateName || '—'} />
               )}
               <InfoRow k="Email" v={selected.profile.professional?.email ?? '—'} />
-              <InfoRow k="Bar Registration No." v={selected.profile.professional?.barRegistrationNumber ?? '—'} />
+              <InfoRow
+                k={selected.country === 'United States' ? 'State Bar License' : 'Bar Registration No.'}
+                v={
+                  selected.profile.professional?.licenseNumber ??
+                  selected.profile.professional?.barRegistrationNumber ??
+                  '—'
+                }
+              />
               <InfoRow k="Primary Court" v={selected.profile.professional?.primaryCourt ?? '—'} />
               <InfoRow k="Practice Area" v={selected.profile.professional?.practiceArea ?? '—'} />
 

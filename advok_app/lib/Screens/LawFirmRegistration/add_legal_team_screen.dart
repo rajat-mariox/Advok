@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../CommonWidgets/phone_number_limit_formatter.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import 'firm_registration_submitted_screen.dart';
 import 'firm_step_scaffold.dart';
 import 'law_firm_registration_models.dart';
 
-const List<String> _designations = [
-  'Managing Partner',
-  'Partner',
-  'Senior Associate',
-  'Associate',
-  'Junior Advocate',
-  'Consultant',
-  'Intern',
-];
+// "Junior Advocate" is an Indian designation; US firms use "Of Counsel" etc.
+List<String> get _designations => [
+      'Managing Partner',
+      'Partner',
+      'Senior Associate',
+      'Associate',
+      CountryCatalog.terms.lawyerSingular == 'Attorney'
+          ? 'Of Counsel'
+          : 'Junior Advocate',
+      'Consultant',
+      'Intern',
+    ];
 
 const List<String> _expertiseOptions = [
   'Criminal',
@@ -287,6 +293,7 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
                       hint: '(555) 000-0000',
                       onChanged: (_) => setState(() {}),
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [PhoneNumberLimitFormatter()],
                     ),
                   ],
                 ),
@@ -575,12 +582,14 @@ class _CardInputField extends StatelessWidget {
     required this.onChanged,
     this.hint,
     this.keyboardType,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final String? hint;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -601,6 +610,7 @@ class _CardInputField extends StatelessWidget {
           controller: controller,
           onChanged: onChanged,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w500,

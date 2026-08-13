@@ -37,7 +37,7 @@ router.post('/admin/login', (req, res) => {
 
 /** App login step 1: request an OTP for a phone number. */
 router.post('/send-otp', (req, res) => {
-  const { phone, countryCode } = req.body ?? {};
+  const { phone, countryCode, country } = req.body ?? {};
   if (typeof phone !== 'string' || phone.replace(/\D/g, '').length < 6) {
     return res.status(400).json({ error: 'A valid phone number is required' });
   }
@@ -47,6 +47,7 @@ router.post('/send-otp', (req, res) => {
   db.otps.push({
     phone,
     countryCode: typeof countryCode === 'string' ? countryCode : '',
+    country: typeof country === 'string' ? country : undefined,
     otp,
     expiresAt: Date.now() + OTP_TTL_MS,
   });
@@ -77,9 +78,14 @@ router.post('/verify-otp', (req, res) => {
       status: 'new',
       phone,
       countryCode: record.countryCode,
+      country: record.country,
       createdAt: new Date().toISOString(),
     };
     db.users.push(user);
+  } else if (!user.country && record.country) {
+    // Backfill accounts created before country tracking; never overwrite an
+    // existing country — the account's legal flow must stay stable.
+    user.country = record.country;
   }
   saveDb();
   const token = signToken(user.id, APP_TOKEN_TTL);

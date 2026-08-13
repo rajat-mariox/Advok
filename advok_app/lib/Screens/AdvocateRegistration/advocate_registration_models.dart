@@ -1,8 +1,13 @@
+import '../../Utils/CountryData/country_catalog.dart';
+
 enum AdvocateType { junior, senior }
 
 extension AdvocateTypeLabel on AdvocateType {
-  String get label =>
-      this == AdvocateType.junior ? 'Junior Advocate' : 'Senior Advocate';
+  /// Country-aware title: Junior/Senior Advocate (India) or
+  /// Associate/Senior Attorney (US).
+  String get label => this == AdvocateType.junior
+      ? CountryCatalog.terms.juniorTitle
+      : CountryCatalog.terms.seniorTitle;
 }
 
 /// Aggregates the data collected across the 5 advocate registration steps so
@@ -13,14 +18,24 @@ class AdvocateOnboardingData {
   static final AdvocateOnboardingData current = AdvocateOnboardingData._();
 
   AdvocateType? advocateType;
+
+  /// US-only classification (empty for countries with the Junior/Senior
+  /// tier cards): "0–2 years" … "20+ years" and Partner/Associate/etc.
+  String yearsInPractice = '';
+  String firmRole = '';
+
   List<String> purposes = [];
+  /// Profile photo as a base64 data URL ('' if the user skipped it).
+  String photo = '';
+
   String state = '';
   String district = '';
   String officeAddress = '';
   String fullName = '';
   String seniorAdvocateName = '';
   String email = '';
-  String barRegistrationNumber = '';
+  /// Bar Registration Number (India) / State Bar License (US).
+  String licenseNumber = '';
   String primaryCourt = '';
   String practiceArea = '';
   List<String> workingDays = [];
@@ -29,6 +44,9 @@ class AdvocateOnboardingData {
 
   void reset() {
     advocateType = null;
+    yearsInPractice = '';
+    firmRole = '';
+    photo = '';
     purposes = [];
     state = '';
     district = '';
@@ -36,7 +54,7 @@ class AdvocateOnboardingData {
     fullName = '';
     seniorAdvocateName = '';
     email = '';
-    barRegistrationNumber = '';
+    licenseNumber = '';
     primaryCourt = '';
     practiceArea = '';
     workingDays = [];
@@ -46,8 +64,12 @@ class AdvocateOnboardingData {
 
   Map<String, dynamic> toPayload() {
     return {
+      'country': CountryCatalog.selected.name,
       'advocateType':
           advocateType == AdvocateType.senior ? 'senior' : 'junior',
+      if (yearsInPractice.isNotEmpty) 'yearsInPractice': yearsInPractice,
+      if (firmRole.isNotEmpty) 'firmRole': firmRole,
+      if (photo.isNotEmpty) 'photo': photo,
       'purposes': purposes,
       'location': {
         'state': state,
@@ -59,7 +81,7 @@ class AdvocateOnboardingData {
         if (seniorAdvocateName.isNotEmpty)
           'seniorAdvocateName': seniorAdvocateName,
         'email': email,
-        'barRegistrationNumber': barRegistrationNumber,
+        'licenseNumber': licenseNumber,
         'primaryCourt': primaryCourt,
         'practiceArea': practiceArea.isEmpty ? 'General Practice' : practiceArea,
       },

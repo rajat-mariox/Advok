@@ -1,17 +1,66 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../../../Utils/Responsive/responsive.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 
-class ClientHomeScreen extends StatelessWidget {
+class ClientHomeScreen extends StatefulWidget {
   const ClientHomeScreen({super.key, this.onProfileTap});
 
   /// Called when the header avatar is tapped. Used by the nav shell to
   /// switch to the Profile tab.
   final VoidCallback? onProfileTap;
+
+  @override
+  State<ClientHomeScreen> createState() => _ClientHomeScreenState();
+}
+
+class _ClientHomeScreenState extends State<ClientHomeScreen> {
+  VoidCallback? get onProfileTap => widget.onProfileTap;
+
+  /// Verified advocates in the client's country, from the backend.
+  List<_AdvocateData> _advocates = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdvocates();
+  }
+
+  Future<void> _loadAdvocates() async {
+    try {
+      final result = await ApiService.fetchAdvocates();
+      if (!mounted) return;
+      setState(() {
+        _advocates = [
+          for (final a in result)
+            _AdvocateData(
+              name: a['name'] as String? ?? 'Advocate',
+              specialty: ((a['practiceArea'] as String?)?.trim().isNotEmpty ??
+                      false)
+                  ? (a['practiceArea'] as String).trim()
+                  : 'General Practice',
+              experience: (a['yearsInPractice'] as String?) ??
+                  (a['advocateType'] == 'senior'
+                      ? '10+ years'
+                      : 'Under 10 years'),
+              rating: null,
+              price: '',
+              image: '',
+              photoBytes: decodePhotoDataUrl(a['photo'] as String?),
+            ),
+        ];
+      });
+    } catch (_) {
+      // Backend unreachable — the section keeps its empty state.
+    }
+  }
 
   String get _greeting {
     final hour = DateTime.now().hour;
@@ -40,7 +89,10 @@ class ClientHomeScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildCategories(),
           const SizedBox(height: 20),
-          _SectionHeader(title: 'Top Advocates', onSeeAll: () {}),
+          _SectionHeader(
+            title: 'Top ${CountryCatalog.terms.lawyerPlural}',
+            onSeeAll: () {},
+          ),
           const SizedBox(height: 12),
           _buildAdvocates(context),
           const SizedBox(height: 20),
@@ -118,20 +170,11 @@ class ClientHomeScreen extends StatelessWidget {
             height: 40,
             child: Stack(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.fillGrey,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.borderGrey),
-                  ),
-                  child: Center(
-                    child: SvgPicture.asset(
-                      'assets/icons/ic_bell.svg',
-                      width: 18,
-                      height: 18,
-                    ),
+                Center(
+                  child: SvgPicture.asset(
+                    'assets/icons/ic_bell.svg',
+                    width: 20,
+                    height: 20,
                   ),
                 ),
                 Positioned(
@@ -150,23 +193,7 @@ class ClientHomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          GestureDetector(
-            onTap: onProfileTap,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.borderGrey, width: 1.4),
-              ),
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/img_avatar_alex.jpg',
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-          ),
+          SessionAvatar(onTap: onProfileTap),
         ],
       ),
     );
@@ -250,7 +277,7 @@ class ClientHomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Instant Legal Answers',
+                  'AI Legal Information',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -261,7 +288,7 @@ class ClientHomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  'Ask ADVOK AI anything legal',
+                  'Legal information, not legal advice',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -295,45 +322,40 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
+  // Tiles are generated from the country's fixed practice-area list — the
+  // same list the attorney onboarding dropdown uses — so tapping a category
+  // matches attorneys exactly.
   Widget _buildCategories() {
-    const categories = [
-      _CategoryData('Criminal', 'assets/icons/ic_cat_criminal.svg',
-          Color(0xFF1A1A1A)),
-      _CategoryData('Civil', 'assets/icons/ic_cat_civil.svg',
-          Color(0xFF333333)),
-      _CategoryData('Corporate', 'assets/icons/ic_cat_corporate.svg',
-          Color(0xFF0A0A0A)),
-      _CategoryData('Family', 'assets/icons/ic_cat_family.svg',
-          Color(0xFF0A0A0A)),
-      _CategoryData('Property', 'assets/icons/ic_cat_property.svg',
-          Color(0xFF333333)),
-      _CategoryData('Immigration', 'assets/icons/ic_cat_immigration.svg',
-          Color(0xFF444444)),
-      _CategoryData('Employment', 'assets/icons/ic_cat_employment.svg',
-          Color(0xFF555555)),
-      _CategoryData('Cyber', 'assets/icons/ic_cat_cyber.svg',
-          Color(0xFF06B6D4)),
+    final areas = CountryCatalog.terms.practiceAreas;
+    const tints = [
+      Color(0xFF1A1A1A),
+      Color(0xFF333333),
+      Color(0xFF0A0A0A),
+      Color(0xFF444444),
+      Color(0xFF555555),
     ];
     return SizedBox(
       height: 82,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: categories.length,
+        itemCount: areas.length,
         separatorBuilder: (context, index) => const SizedBox(width: 16),
         itemBuilder: (context, index) {
-          final category = categories[index];
+          final area = areas[index];
           return _IconTile(
-            label: category.label,
-            icon: category.icon,
-            tint: category.tint,
+            label: _categoryLabel(area),
+            icon: _categoryIcon(area),
+            tint: tints[index % tints.length],
             iconSize: 24,
             borderAlpha: 0.19,
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      AdvocateListScreen(title: '${category.label} Law'),
+                  builder: (_) => AdvocateListScreen(
+                    title: area,
+                    practiceArea: area,
+                  ),
                 ),
               );
             },
@@ -343,16 +365,47 @@ class ClientHomeScreen extends StatelessWidget {
     );
   }
 
+  /// Short tile label: "Employment Law" → "Employment".
+  static String _categoryLabel(String area) =>
+      area.endsWith(' Law') ? area.substring(0, area.length - 4) : area;
+
+  /// Best-fit icon for a practice area (checked in order so e.g.
+  /// "Intellectual Property" resolves before the generic "property" match).
+  static String _categoryIcon(String area) {
+    final a = area.toLowerCase();
+    if (a.contains('criminal')) return 'assets/icons/ic_cat_criminal.svg';
+    if (a.contains('family')) return 'assets/icons/ic_cat_family.svg';
+    if (a.contains('immigration')) return 'assets/icons/ic_cat_immigration.svg';
+    if (a.contains('cyber') || a.contains('intellectual')) {
+      return 'assets/icons/ic_cat_cyber.svg';
+    }
+    if (a.contains('property') || a.contains('estate')) {
+      return 'assets/icons/ic_cat_property.svg';
+    }
+    if (a.contains('employment') || a.contains('labour') ||
+        a.contains('injury')) {
+      return 'assets/icons/ic_cat_employment.svg';
+    }
+    if (a.contains('corporate') || a.contains('business') ||
+        a.contains('tax') || a.contains('bankruptcy') ||
+        a.contains('consumer')) {
+      return 'assets/icons/ic_cat_corporate.svg';
+    }
+    return 'assets/icons/ic_cat_civil.svg';
+  }
+
   Widget _buildAdvocates(BuildContext context) {
-    const advocates = <_AdvocateData>[];
+    final advocates = _advocates;
     if (advocates.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: _EmptyState(
           icon: 'assets/icons/ic_search.svg',
-          title: 'No advocates yet',
+          title: 'No ${CountryCatalog.terms.lawyerPlural.toLowerCase()} yet',
           message:
-              'Advocates will appear here once verified advocates join the platform.',
+              '${CountryCatalog.terms.lawyerPlural} will appear here once '
+              'verified ${CountryCatalog.terms.lawyerPlural.toLowerCase()} '
+              'join the platform.',
         ),
       );
     }
@@ -427,14 +480,6 @@ class ClientHomeScreen extends StatelessWidget {
   }
 }
 
-class _CategoryData {
-  const _CategoryData(this.label, this.icon, this.tint);
-
-  final String label;
-  final String icon;
-  final Color tint;
-}
-
 class _AdvocateData {
   const _AdvocateData({
     required this.name,
@@ -443,6 +488,7 @@ class _AdvocateData {
     required this.rating,
     required this.price,
     required this.image,
+    this.photoBytes,
   });
 
   final String name;
@@ -451,6 +497,9 @@ class _AdvocateData {
   final String? rating;
   final String price;
   final String image;
+
+  /// Decoded profile photo uploaded at onboarding (null if none).
+  final Uint8List? photoBytes;
 }
 
 class _EmptyState extends StatelessWidget {
@@ -630,7 +679,12 @@ class _AdvocateCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(advocate.image, fit: BoxFit.cover),
+                if (advocate.photoBytes != null)
+                  Image.memory(advocate.photoBytes!, fit: BoxFit.cover)
+                else if (advocate.image.isEmpty)
+                  _InitialsBox(name: advocate.name)
+                else
+                  Image.asset(advocate.image, fit: BoxFit.cover),
                 Positioned(
                   top: 8,
                   right: 8,
@@ -729,25 +783,39 @@ class _AdvocateCard extends StatelessWidget {
                     Text.rich(
                       TextSpan(
                         children: [
-                          TextSpan(
-                            text: advocate.price,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              height: 1.5,
-                              letterSpacing: -0.08,
-                              color: AppColors.textPrimary,
+                          // No fee collected at onboarding yet — show
+                          // availability instead of an empty price.
+                          if (advocate.price.isEmpty)
+                            const TextSpan(
+                              text: 'Available',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                height: 1.5,
+                                color: Color(0xFF2A2A2A),
+                              ),
+                            )
+                          else ...[
+                            TextSpan(
+                              text: advocate.price,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                height: 1.5,
+                                letterSpacing: -0.08,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
-                          ),
-                          const TextSpan(
-                            text: '/hr',
-                            style: TextStyle(
-                              fontSize: 10,
-                              height: 1.5,
-                              letterSpacing: 0.12,
-                              color: AppColors.textGrey,
+                            const TextSpan(
+                              text: '/hr',
+                              style: TextStyle(
+                                fontSize: 10,
+                                height: 1.5,
+                                letterSpacing: 0.12,
+                                color: AppColors.textGrey,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
@@ -784,6 +852,37 @@ class _AdvocateCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Fallback card image with the advocate's initials, used until profile
+/// photos are collected during onboarding.
+class _InitialsBox extends StatelessWidget {
+  const _InitialsBox({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts =
+        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final initials = parts.isEmpty
+        ? '?'
+        : parts.take(2).map((p) => p[0].toUpperCase()).join();
+    return Container(
+      color: AppColors.progressTrack,
+      child: Center(
+        child: Text(
+          initials,
+          style: const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+            color: AppColors.textPrimary,
+          ),
+        ),
       ),
     );
   }

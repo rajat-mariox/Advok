@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
 import 'advocate_registration_models.dart';
 import 'advocate_step_scaffold.dart';
@@ -17,18 +18,49 @@ class DescribeYourselfScreen extends StatefulWidget {
 }
 
 class _DescribeYourselfScreenState extends State<DescribeYourselfScreen> {
+  // India-style flow: one of the two tier cards.
   AdvocateType? _selected;
+
+  // US-style flow: Years in Practice + Firm Role instead of a fixed tier.
+  String? _years;
+  String? _firmRole;
+
+  bool get _usesFirmRoles => CountryCatalog.terms.usesFirmRoles;
+
+  bool get _canContinue => _usesFirmRoles
+      ? _years != null && _firmRole != null
+      : _selected != null;
+
+  /// The rest of the flow (and the backend) still works on a junior/senior
+  /// tier, so for the US we derive it from the role + experience.
+  AdvocateType get _derivedType {
+    if (!_usesFirmRoles) return _selected!;
+    const seniorRoles = {
+      'Partner',
+      'Of Counsel',
+      'Counsel',
+      'Solo Practitioner',
+    };
+    const seniorYears = {'11–20 years', '20+ years'};
+    return seniorRoles.contains(_firmRole) || seniorYears.contains(_years)
+        ? AdvocateType.senior
+        : AdvocateType.junior;
+  }
 
   @override
   Widget build(BuildContext context) {
     return AdvocateStepScaffold(
       currentStep: 1,
-      continueEnabled: _selected != null,
+      continueEnabled: _canContinue,
       onContinue: () {
-        AdvocateOnboardingData.current.advocateType = _selected;
+        final type = _derivedType;
+        AdvocateOnboardingData.current
+          ..advocateType = type
+          ..yearsInPractice = _usesFirmRoles ? (_years ?? '') : ''
+          ..firmRole = _usesFirmRoles ? (_firmRole ?? '') : '';
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => SelectPurposeScreen(advocateType: _selected!),
+            builder: (_) => SelectPurposeScreen(advocateType: type),
           ),
         );
       },
@@ -67,22 +99,129 @@ class _DescribeYourselfScreenState extends State<DescribeYourselfScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        _AdvocateTypeCard(
-          title: 'Junior Advocate',
-          subtitle: 'Less than 10 years of practice',
-          note: 'You will be guided by senior advocates',
-          selected: _selected == AdvocateType.junior,
-          onTap: () => setState(() => _selected = AdvocateType.junior),
-        ),
-        const SizedBox(height: 12),
-        _AdvocateTypeCard(
-          title: 'Senior Advocate',
-          subtitle: '10+ years of practice',
-          note: 'Designated by the High Court or Supreme Court',
-          selected: _selected == AdvocateType.senior,
-          onTap: () => setState(() => _selected = AdvocateType.senior),
-        ),
+        if (_usesFirmRoles) ..._buildFirmRoleSections() else ...[
+          _AdvocateTypeCard(
+            title: CountryCatalog.terms.juniorTitle,
+            subtitle: CountryCatalog.terms.juniorSubtitle,
+            note: CountryCatalog.terms.juniorNote,
+            selected: _selected == AdvocateType.junior,
+            onTap: () => setState(() => _selected = AdvocateType.junior),
+          ),
+          const SizedBox(height: 12),
+          _AdvocateTypeCard(
+            title: CountryCatalog.terms.seniorTitle,
+            subtitle: CountryCatalog.terms.seniorSubtitle,
+            note: CountryCatalog.terms.seniorNote,
+            selected: _selected == AdvocateType.senior,
+            onTap: () => setState(() => _selected = AdvocateType.senior),
+          ),
+        ],
       ],
+    );
+  }
+
+  /// US variant: two independent questions instead of a fixed tier.
+  List<Widget> _buildFirmRoleSections() {
+    return [
+      const _SectionLabel('Years in Practice'),
+      const SizedBox(height: 8),
+      _DropdownField(
+        value: _years,
+        placeholder: 'Select years in practice…',
+        onTap: () => _showOptionsSheet(
+          title: 'Years in Practice',
+          options: CountryCatalog.terms.yearsInPracticeOptions,
+          selected: _years,
+          onSelected: (value) => setState(() => _years = value),
+        ),
+      ),
+      const SizedBox(height: 16),
+      const _SectionLabel('Firm Role'),
+      const SizedBox(height: 8),
+      _DropdownField(
+        value: _firmRole,
+        placeholder: 'Select firm role…',
+        onTap: () => _showOptionsSheet(
+          title: 'Firm Role',
+          options: CountryCatalog.terms.firmRoles,
+          selected: _firmRole,
+          onSelected: (value) => setState(() => _firmRole = value),
+        ),
+      ),
+    ];
+  }
+
+  void _showOptionsSheet({
+    required String title,
+    required List<String> options,
+    required String? selected,
+    required ValueChanged<String> onSelected,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.31,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                  itemCount: options.length,
+                  itemBuilder: (_, index) {
+                    final option = options[index];
+                    final isSelected = option == selected;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      title: Text(
+                        option,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
+                          letterSpacing: -0.15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? SvgPicture.asset(
+                              'assets/icons/ic_check.svg',
+                              width: 14,
+                              height: 14,
+                            )
+                          : null,
+                      onTap: () {
+                        onSelected(option);
+                        Navigator.of(sheetContext).pop();
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -115,9 +254,9 @@ class _DescribeYourselfScreenState extends State<DescribeYourselfScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Advocate Registration',
-            style: TextStyle(
+          Text(
+            '${CountryCatalog.terms.lawyerSingular} Registration',
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               height: 16 / 12,
@@ -129,6 +268,85 @@ class _DescribeYourselfScreenState extends State<DescribeYourselfScreen> {
     );
   }
 
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        height: 18 / 12,
+        color: AppColors.textGrey555,
+      ),
+    );
+  }
+}
+
+/// Dropdown-style field (tap to open a bottom sheet of options), styled like
+/// the court picker on the Professional Details step.
+class _DropdownField extends StatelessWidget {
+  const _DropdownField({
+    required this.value,
+    required this.placeholder,
+    required this.onTap,
+  });
+
+  final String? value;
+  final String placeholder;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.fillGrey,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 17),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  value == null ? AppColors.borderGrey : AppColors.textPrimary,
+              width: 1.4,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value ?? placeholder,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -0.23,
+                    color: value == null
+                        ? AppColors.textGrey
+                        : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              SvgPicture.asset(
+                'assets/icons/ic_chevron_down.svg',
+                width: 16,
+                height: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _AdvocateTypeCard extends StatelessWidget {

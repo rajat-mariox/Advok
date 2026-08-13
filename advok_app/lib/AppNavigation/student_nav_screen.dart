@@ -8,6 +8,7 @@ import '../Screens/Screens/MessagesScreen/messages_screen.dart';
 import '../Screens/Screens/StudentHomeScreen/student_home_screen.dart';
 import '../Screens/Screens/StudentProfileScreen/student_profile_screen.dart';
 import '../Utils/AppColors/app_colors.dart';
+import '../Utils/CountryData/country_catalog.dart';
 
 /// Bottom-navigation shell for the law student flow.
 class StudentNavScreen extends StatefulWidget {
@@ -20,13 +21,16 @@ class StudentNavScreen extends StatefulWidget {
 class _StudentNavScreenState extends State<StudentNavScreen> {
   int _index = 0;
 
-  static const List<({String icon, String label})> _items = [
-    (icon: 'assets/icons/ic_nav_home.svg', label: 'Home'),
-    (icon: 'assets/icons/ic_role_advocate.svg', label: 'Advocates'),
-    (icon: 'assets/icons/ic_nav_messages.svg', label: 'Messages'),
-    (icon: 'assets/icons/ic_help.svg', label: 'Queries'),
-    (icon: 'assets/icons/ic_nav_profile.svg', label: 'Profile'),
-  ];
+  static List<({String icon, String label})> get _items => [
+        (icon: 'assets/icons/ic_nav_home.svg', label: 'Home'),
+        (
+          icon: 'assets/icons/ic_role_advocate.svg',
+          label: CountryCatalog.terms.lawyerPlural,
+        ),
+        (icon: 'assets/icons/ic_nav_messages.svg', label: 'Messages'),
+        (icon: 'assets/icons/ic_help.svg', label: 'Queries'),
+        (icon: 'assets/icons/ic_nav_profile.svg', label: 'Profile'),
+      ];
 
   @override
   Widget build(BuildContext context) {

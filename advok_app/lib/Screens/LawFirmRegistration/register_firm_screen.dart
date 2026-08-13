@@ -1,7 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../CommonWidgets/phone_number_limit_formatter.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import 'add_legal_team_screen.dart';
@@ -192,19 +194,21 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
         const SizedBox(height: 8),
         _TextInputField(
           controller: _mainPhoneController,
-          hint: '+1 (555) 000-0000',
+          hint: '(555) 000-0000',
           onChanged: (_) => setState(() {}),
           showCheck: _mainPhoneController.text.trim().isNotEmpty,
           keyboardType: TextInputType.phone,
+          inputFormatters: [PhoneNumberLimitFormatter()],
         ),
         const SizedBox(height: 16),
         const _FieldLabel('Reception Number'),
         const SizedBox(height: 8),
         _TextInputField(
           controller: _receptionController,
-          hint: '+1 (555) 000-0001',
+          hint: '(555) 000-0001',
           onChanged: (_) => setState(() {}),
           keyboardType: TextInputType.phone,
+          inputFormatters: [PhoneNumberLimitFormatter()],
         ),
         const SizedBox(height: 24),
         const _SectionHeader('OFFICE ADDRESS'),
@@ -569,6 +573,7 @@ class _TextInputField extends StatelessWidget {
     this.hint,
     this.showCheck = false,
     this.keyboardType,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -576,6 +581,7 @@ class _TextInputField extends StatelessWidget {
   final String? hint;
   final bool showCheck;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -598,6 +604,7 @@ class _TextInputField extends StatelessWidget {
               controller: controller,
               onChanged: onChanged,
               keyboardType: keyboardType,
+              inputFormatters: inputFormatters,
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,

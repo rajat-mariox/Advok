@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../AppNavigation/advocate_nav_screen.dart';
 import '../../Services/approval_status_poller.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
 import '../RegistrationStatus/registration_rejected_screen.dart';
 
@@ -145,10 +146,12 @@ class _AdvocateVerificationSubmittedScreenState
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Text(
             _approved
-                ? 'Your bar registration has been verified and your practice '
-                    'is live. Clients can now find and book you.'
+                ? 'Your ${CountryCatalog.terms.licenseLabel.toLowerCase()} '
+                    'has been verified and your practice is live. Clients can '
+                    'now find and book you.'
                 : 'Your profile has been sent for review. Our team verifies '
-                    'your bar registration before your practice goes live to clients.',
+                    'your ${CountryCatalog.terms.licenseLabel.toLowerCase()} '
+                    'before your practice goes live to clients.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -200,7 +203,7 @@ class _AdvocateVerificationSubmittedScreenState
             style: _approved ? _DotStyle.done : _DotStyle.active,
           ),
           _TimelineStep(
-            title: 'Bar Registration Verified',
+            title: '${CountryCatalog.terms.licenseLabel} Verified',
             trailing: _approved ? 'Done' : '—',
             style: _approved ? _DotStyle.done : _DotStyle.upcoming,
           ),
@@ -239,7 +242,11 @@ class _AdvocateVerificationSubmittedScreenState
           _AccessRow('Client Requests & Bookings', unlocked: _approved),
           _AccessRow('Case Management', unlocked: _approved),
           _AccessRow('Hearing Schedule', unlocked: _approved),
-          _AccessRow('Verified Advocate Badge', unlocked: _approved, isLast: true),
+          _AccessRow(
+            'Verified ${CountryCatalog.terms.lawyerSingular} Badge',
+            unlocked: _approved,
+            isLast: true,
+          ),
         ],
       ),
     );

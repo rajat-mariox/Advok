@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../AppNavigation/client_nav_screen.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
 import '../AdvocateRegistration/advocate_registration_models.dart';
 import '../AdvocateRegistration/describe_yourself_screen.dart';
@@ -249,7 +250,7 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
                 child: _RoleCard(
                   icon: 'assets/icons/ic_role_advocate.svg',
                   badgeColor: const Color(0x210A0A0A),
-                  title: 'Advocate',
+                  title: CountryCatalog.terms.lawyerSingular,
                   subtitle: 'Manage cases & clients',
                   selected: _selected == UserRole.advocate,
                   onTap: () => setState(() => _selected = UserRole.advocate),

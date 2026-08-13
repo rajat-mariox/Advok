@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
+import '../../Utils/CountryData/district_catalog.dart';
 import 'advocate_registration_models.dart';
 import 'advocate_step_scaffold.dart';
 import 'professional_details_screen.dart';
@@ -23,6 +24,7 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
   // off-screen fields while the user scrolls (e.g. with the keyboard open).
   final TextEditingController _districtController = TextEditingController();
   final TextEditingController _officeController = TextEditingController();
+  final FocusNode _districtFocus = FocusNode();
 
   // States/provinces of the country chosen at login.
   List<String> get _states => CountryCatalog.selected.states;
@@ -31,10 +33,34 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
   String get _district => _districtController.text;
   String get _office => _officeController.text;
 
+  /// District/city suggestions for the picked state, narrowed by what the
+  /// user has typed. Hidden once the text exactly matches a suggestion.
+  List<String> get _districtSuggestions {
+    if (_state == null) return const [];
+    final matches = DistrictCatalog.search(
+      CountryCatalog.selected.name,
+      _state!,
+      _district,
+    );
+    final typed = _district.trim().toLowerCase();
+    if (matches.length == 1 && matches.first.toLowerCase() == typed) {
+      return const [];
+    }
+    return matches;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Show/hide the suggestion list as the field gains/loses focus.
+    _districtFocus.addListener(() => setState(() {}));
+  }
+
   @override
   void dispose() {
     _districtController.dispose();
     _officeController.dispose();
+    _districtFocus.dispose();
     super.dispose();
   }
 
@@ -96,6 +122,10 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
         const _FieldLabel('District / City', required: true),
         const SizedBox(height: 8),
         _buildDistrictField(),
+        if (_districtFocus.hasFocus && _districtSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _buildDistrictSuggestions(),
+        ],
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -244,6 +274,16 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
   }
 
   Widget _buildDistrictField() {
+    // Hint follows the picked state, e.g. "e.g. Pune, Nagpur…" for
+    // Maharashtra or "e.g. Manhattan, Brooklyn…" for New York.
+    final all = _state == null
+        ? const <String>[]
+        : DistrictCatalog.forState(CountryCatalog.selected.name, _state!);
+    final hint = _state == null
+        ? 'Select ${_stateLabel.toLowerCase()} first…'
+        : all.isEmpty
+            ? 'Enter district or city…'
+            : 'e.g. ${all.take(2).join(', ')}…';
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 17),
@@ -268,6 +308,7 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
           Expanded(
             child: TextField(
               controller: _districtController,
+              focusNode: _districtFocus,
               onChanged: (_) => setState(() {}),
               style: const TextStyle(
                 fontSize: 15,
@@ -278,7 +319,7 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: 'e.g. Manhattan, Brooklyn…',
+                hintText: hint,
                 hintStyle: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
@@ -288,6 +329,71 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Tappable list of matching districts/cities shown under the field while
+  /// it has focus. Picking one fills the field; free text is still allowed.
+  Widget _buildDistrictSuggestions() {
+    final suggestions = _districtSuggestions.take(6).toList();
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderGrey),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < suggestions.length; i++)
+            InkWell(
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(i == 0 ? 14 : 0),
+                bottom:
+                    Radius.circular(i == suggestions.length - 1 ? 14 : 0),
+              ),
+              onTap: () {
+                _districtController.text = suggestions[i];
+                _districtFocus.unfocus();
+                setState(() {});
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 17,
+                  vertical: 12,
+                ),
+                decoration: i == suggestions.length - 1
+                    ? null
+                    : const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: AppColors.divider),
+                        ),
+                      ),
+                child: Row(
+                  children: [
+                    SvgPicture.asset(
+                      'assets/icons/ic_pin.svg',
+                      width: 13,
+                      height: 13,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        suggestions[i],
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

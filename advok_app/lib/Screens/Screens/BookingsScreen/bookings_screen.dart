@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 
 class _Booking {
   const _Booking({
@@ -139,10 +140,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Advocates you book will appear here.',
+          Text(
+            '${CountryCatalog.terms.lawyerPlural} you book will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12.5,
               color: AppColors.textGrey555,
             ),

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -7,6 +10,7 @@ import '../../../Utils/AppColors/app_colors.dart';
 import '../../ChooseRoleScreen/choose_role_screen.dart';
 import '../../LawStudentRegistration/verification_submitted_screen.dart';
 import '../../SelectCountryScreen/select_country_screen.dart';
+import '../ProfileScreen/edit_profile_screen.dart';
 import '../ProfileScreen/help_support_screen.dart';
 
 /// Profile tab of the law student flow. Mirrors the client profile design
@@ -21,6 +25,25 @@ class StudentProfileScreen extends StatefulWidget {
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
   bool _notificationsEnabled = true;
   String _location = '';
+
+  /// Profile photo from the session (base64 data URL → bytes).
+  Uint8List? get _photoBytes {
+    final photo = Session.photo;
+    if (photo == null || photo.isEmpty) return null;
+    final comma = photo.indexOf(',');
+    try {
+      return base64Decode(comma >= 0 ? photo.substring(comma + 1) : photo);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openEditProfile() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+    );
+    if (changed == true && mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +99,13 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               _buildSectionLabel('Preferences'),
               _buildSectionCard(
                 children: [
+                  ProfileMenuRow(
+                    icon: 'assets/icons/ic_edit.svg',
+                    title: 'Edit Profile',
+                    subtitle: 'Photo, name, college, course',
+                    onTap: _openEditProfile,
+                  ),
+                  _buildInsetDivider(),
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_bell.svg',
                     title: 'Notifications',
@@ -572,21 +602,27 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.borderGrey, width: 1.4),
             ),
-            child: Center(
-              child: SvgPicture.asset(
-                'assets/icons/ic_user.svg',
-                width: 26,
-                height: 26,
-              ),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: _photoBytes != null
+                ? Image.memory(
+                    _photoBytes!,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                  )
+                : Center(
+                    child: SvgPicture.asset(
+                      'assets/icons/ic_user.svg',
+                      width: 26,
+                      height: 26,
+                    ),
+                  ),
           ),
           Positioned(
             right: -4,
             bottom: -4,
             child: GestureDetector(
-              onTap: () {
-                // TODO: Change the profile photo.
-              },
+              onTap: _openEditProfile,
               child: Container(
                 width: 24,
                 height: 24,

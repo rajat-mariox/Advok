@@ -8,6 +8,7 @@ import '../Screens/Screens/HomeScreen/client_home_screen.dart';
 import '../Screens/Screens/MessagesScreen/messages_screen.dart';
 import '../Screens/Screens/ProfileScreen/profile_screen.dart';
 import '../Utils/AppColors/app_colors.dart';
+import '../Utils/CountryData/country_catalog.dart';
 
 /// Bottom-navigation shell for the client flow.
 class ClientNavScreen extends StatefulWidget {
@@ -46,7 +47,7 @@ class _ClientNavScreenState extends State<ClientNavScreen> {
                 onProfileTap: () => setState(() => _index = 4),
               ),
               AdvocateListScreen(
-                title: 'Criminal Law',
+                title: 'Find ${CountryCatalog.terms.lawyerPlural}',
                 onBack: () => setState(() => _index = 0),
               ),
               const MessagesScreen(),

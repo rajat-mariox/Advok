@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../AdvocateCasesScreen/advocate_cases_screen.dart';
@@ -254,25 +255,21 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
             ),
           ),
           Material(
-            color: AppColors.fillGrey,
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
               onTap: () {
                 // TODO: Open notifications once that screen is designed.
               },
-              child: Container(
+              child: SizedBox(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.borderGrey),
-                ),
                 child: Center(
                   child: SvgPicture.asset(
                     'assets/icons/ic_bell.svg',
-                    width: 18,
-                    height: 18,
+                    width: 20,
+                    height: 20,
                   ),
                 ),
               ),
@@ -282,21 +279,8 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
           InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: widget.onProfileTap,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.fillGrey,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.borderGrey, width: 1.4),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  'assets/icons/ic_user.svg',
-                  width: 18,
-                  height: 18,
-                ),
-              ),
+            child: SessionAvatar(
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
         ],
