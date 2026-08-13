@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 
 import '../../CommonWidgets/circle_back_button.dart';
+import '../../CommonWidgets/phone_number_limit_formatter.dart';
 import '../../CommonWidgets/social_login_section.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
@@ -51,8 +52,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final phone = _phoneController.text.trim();
     setState(() => _sending = true);
     try {
-      final devOtp =
-          await ApiService.sendOtp(phone, widget.country.dialCode);
+      final devOtp = await ApiService.sendOtp(
+        phone,
+        widget.country.dialCode,
+        country: widget.country.name,
+      );
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -273,6 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
               keyboardType: TextInputType.phone,
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[\d\s()\-]')),
+                PhoneNumberLimitFormatter(_countryProfile.maxDigits),
               ],
               style: const TextStyle(
                 fontSize: 17,

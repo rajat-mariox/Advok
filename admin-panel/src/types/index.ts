@@ -2,13 +2,21 @@ export type UserRole = 'client' | 'advocate' | 'lawStudent' | 'lawFirm';
 
 export type AdvocateType = 'Junior Advocate' | 'Senior Advocate';
 
-export type VerificationStatus = 'Verified' | 'Pending Review' | 'Rejected';
+export type VerificationStatus = 'Verified' | 'Pending Review' | 'Rejected' | 'Suspended';
 
 export interface AdminAdvocate {
   id: string;
+  /** Country the account registered with ('India', 'United States', …). */
+  country?: string;
+  /** Profile photo uploaded from the app, as a data URL. */
+  photo?: string;
   name: string;
   email: string;
-  type: AdvocateType;
+  phone: string; // OTP login number (countryCode + phone)
+  /** India: Junior/Senior Advocate. US: the firm role (Partner, Associate…). */
+  type: string;
+  /** US-only: "0–2 years" … "20+ years". */
+  yearsInPractice?: string;
   specialty: string;
   barRegNo: string;
   court: string;
@@ -29,6 +37,8 @@ export type ClientStatus = 'Active' | 'Suspended';
 
 export interface AdminClient {
   id: string;
+  /** Profile photo uploaded from the app, as a data URL. */
+  photo?: string;
   name: string;
   email: string;
   location: string;
@@ -83,7 +93,7 @@ export interface Payout {
 
 // ---------- Law Firms (mirrors LawFirmRegistration + Firm screens) ----------
 
-export type FirmVerificationStatus = 'Pending Approval' | 'Verified' | 'Rejected';
+export type FirmVerificationStatus = 'Pending Approval' | 'Verified' | 'Rejected' | 'Suspended';
 
 // Registration designations from add_legal_team_screen.dart
 export type FirmDesignation =
@@ -105,7 +115,10 @@ export interface FirmTeamLawyer {
 
 export interface AdminLawFirm {
   id: string;
+  /** Profile photo uploaded from the app, as a data URL. */
+  photo?: string;
   firmName: string;
+  phone: string; // OTP login number (countryCode + phone), distinct from mainPhone
   foundedYear: string;
   contactPersonName: string; // Managing Partner
   officialEmail: string;
@@ -128,12 +141,19 @@ export interface AdminLawFirm {
 
 // ---------- Law Students (mirrors LawStudentRegistration + Student screens) ----------
 
-export type StudentVerificationStatus = 'Pending Verification' | 'Verified' | 'Rejected';
+export type StudentVerificationStatus =
+  | 'Pending Verification'
+  | 'Verified'
+  | 'Rejected'
+  | 'Suspended';
 
 export interface AdminStudent {
   id: string;
+  /** Profile photo uploaded from the app, as a data URL. */
+  photo?: string;
   fullName: string;
   email: string;
+  phone: string; // OTP login number (countryCode + phone)
   college: string;
   course: string; // e.g. J.D., LLB, LLM
   academicYear?: string; // 1st Year … Final Year

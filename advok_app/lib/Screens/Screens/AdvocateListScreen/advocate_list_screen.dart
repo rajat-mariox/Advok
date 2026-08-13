@@ -1,10 +1,28 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../AdvocateProfileScreen/advocate_profile_screen.dart';
+
+/// Decodes a 'data:image/...;base64,xxxx' string into bytes (null if empty
+/// or malformed). Shared by the client browse screens.
+Uint8List? decodePhotoDataUrl(String? dataUrl) {
+  if (dataUrl == null || dataUrl.isEmpty) return null;
+  final comma = dataUrl.indexOf(',');
+  try {
+    return base64Decode(
+      comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl,
+    );
+  } catch (_) {
+    return null;
+  }
+}
 
 class Advocate {
   const Advocate({
@@ -17,7 +35,36 @@ class Advocate {
     required this.availability,
     required this.image,
     this.rating,
+    this.tier = 'junior',
+    this.role = '',
+    this.photoBytes,
   });
+
+  /// Builds a card model from the backend's /advocates response.
+  factory Advocate.fromApi(Map<String, dynamic> json) {
+    final tier = json['advocateType'] as String? ?? 'junior';
+    final years = json['yearsInPractice'] as String?;
+    final firmRole = json['firmRole'] as String?;
+    final practiceArea = (json['practiceArea'] as String?)?.trim() ?? '';
+    final location = [json['district'], json['state']]
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .join(', ');
+    return Advocate(
+      name: json['name'] as String? ?? 'Advocate',
+      specialty: practiceArea.isEmpty ? 'General Practice' : practiceArea,
+      experience:
+          years ?? (tier == 'senior' ? '10+ years' : 'Under 10 years'),
+      cases: firmRole ?? (json['primaryCourt'] as String? ?? ''),
+      location: location.isEmpty ? '—' : location,
+      price: '',
+      availability: 'Available',
+      image: '',
+      tier: tier,
+      role: firmRole ?? '',
+      photoBytes: decodePhotoDataUrl(json['photo'] as String?),
+    );
+  }
 
   final String name;
   final String specialty;
@@ -28,14 +75,32 @@ class Advocate {
   final String availability;
   final String image;
   final String? rating;
+
+  /// Internal junior/senior tier, used by the filter chips in countries
+  /// without firm roles.
+  final String tier;
+
+  /// Firm role (Partner, Associate, …), used by the filter chips in countries
+  /// with firm roles (US).
+  final String role;
+
+  /// Decoded profile photo uploaded at onboarding (null if none).
+  final Uint8List? photoBytes;
 }
 
-const List<Advocate> _advocates = [];
-
 class AdvocateListScreen extends StatefulWidget {
-  const AdvocateListScreen({super.key, required this.title, this.onBack});
+  const AdvocateListScreen({
+    super.key,
+    required this.title,
+    this.practiceArea,
+    this.onBack,
+  });
 
   final String title;
+
+  /// When set (opened from a Legal Categories tile), only advocates whose
+  /// practice area matches are listed. Null shows every practice area.
+  final String? practiceArea;
 
   /// Overrides the default back behaviour (popping the route). Used when the
   /// screen is embedded as the Search tab.
@@ -46,9 +111,82 @@ class AdvocateListScreen extends StatefulWidget {
 }
 
 class _AdvocateListScreenState extends State<AdvocateListScreen> {
-  static const List<String> _filters = ['All', 'Junior', 'Senior', 'Available Now'];
+  // Filter chips follow the country: firm roles (Partner, Associate, …) where
+  // the country uses them (US), otherwise the junior/senior tiers.
+  List<String> get _filters {
+    final terms = CountryCatalog.terms;
+    return [
+      'All',
+      if (terms.usesFirmRoles)
+        ...terms.firmRoles
+      else ...[terms.juniorTitle, terms.seniorTitle],
+    ];
+  }
 
   int _selectedFilter = 0;
+  String _query = '';
+
+  List<Advocate> _advocates = [];
+  bool _loading = true;
+  String _loadError = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await ApiService.fetchAdvocates();
+      if (!mounted) return;
+      setState(() {
+        _advocates = result.map(Advocate.fromApi).toList();
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  /// Advocates matching the screen's practice area (if any), the active
+  /// filter chip and the search text.
+  List<Advocate> get _visible {
+    final q = _query.trim().toLowerCase();
+    final area = widget.practiceArea?.trim().toLowerCase();
+    return [
+      for (final a in _advocates)
+        if (_matchesArea(a, area) &&
+            _matchesFilterChip(a) &&
+            (q.isEmpty ||
+                a.name.toLowerCase().contains(q) ||
+                a.specialty.toLowerCase().contains(q) ||
+                a.location.toLowerCase().contains(q)))
+          a,
+    ];
+  }
+
+  /// Practice-area match. Dropdown-registered attorneys carry the exact
+  /// catalog string; the two-way contains also catches older free-text
+  /// profiles ("Criminal" matches the "Criminal Defense" category).
+  static bool _matchesArea(Advocate a, String? area) {
+    if (area == null) return true;
+    final s = a.specialty.trim().toLowerCase();
+    if (s.isEmpty) return false;
+    return s.contains(area) || area.contains(s);
+  }
+
+  bool _matchesFilterChip(Advocate a) {
+    if (_selectedFilter == 0) return true;
+    if (CountryCatalog.terms.usesFirmRoles) {
+      return a.role == _filters[_selectedFilter];
+    }
+    return a.tier == (_selectedFilter == 1 ? 'junior' : 'senior');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,11 +209,18 @@ class _AdvocateListScreenState extends State<AdvocateListScreen> {
                     const SizedBox(height: 12),
                     _buildFilterChips(),
                     const SizedBox(height: 12),
-                    if (_advocates.isEmpty)
+                    if (_loading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 48),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_visible.isEmpty)
                       _buildEmptyState()
                     else ...[
                       Text(
-                        'Showing ${_advocates.length} advocates near you',
+                        'Showing ${_visible.length} '
+                        '${CountryCatalog.terms.lawyerPlural.toLowerCase()} '
+                        'near you',
                         style: const TextStyle(
                           fontSize: 12,
                           height: 16 / 12,
@@ -83,9 +228,9 @@ class _AdvocateListScreenState extends State<AdvocateListScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      for (int i = 0; i < _advocates.length; i++) ...[
+                      for (int i = 0; i < _visible.length; i++) ...[
                         if (i > 0) const SizedBox(height: 12),
-                        _AdvocateListCard(advocate: _advocates[i]),
+                        _AdvocateListCard(advocate: _visible[i]),
                       ],
                     ],
                   ],
@@ -163,6 +308,7 @@ class _AdvocateListScreenState extends State<AdvocateListScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
+              onChanged: (value) => setState(() => _query = value),
               style: const TextStyle(
                 fontSize: 14,
                 letterSpacing: -0.15,
@@ -171,7 +317,8 @@ class _AdvocateListScreenState extends State<AdvocateListScreen> {
               decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: 'Search advocates...',
+                hintText:
+                    'Search ${CountryCatalog.terms.lawyerPlural.toLowerCase()}...',
                 hintStyle: TextStyle(
                   fontSize: 14,
                   letterSpacing: -0.15,
@@ -206,19 +353,27 @@ class _AdvocateListScreenState extends State<AdvocateListScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'No advocates yet',
-            style: TextStyle(
+          Text(
+            'No ${CountryCatalog.terms.lawyerPlural.toLowerCase()} yet',
+            style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Advocates will appear here once verified advocates join the platform.',
+          Text(
+            _loadError.isNotEmpty
+                ? _loadError
+                : _advocates.isNotEmpty
+                    ? 'No ${CountryCatalog.terms.lawyerPlural.toLowerCase()} '
+                        'match your search or filter.'
+                    : '${CountryCatalog.terms.lawyerPlural} will appear here '
+                        'once verified '
+                        '${CountryCatalog.terms.lawyerPlural.toLowerCase()} '
+                        'join the platform.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12.5,
               color: AppColors.textGrey555,
             ),
@@ -286,12 +441,21 @@ class _AdvocateListCard extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              advocate.image,
-              width: 72,
-              height: 72,
-              fit: BoxFit.cover,
-            ),
+            child: advocate.photoBytes != null
+                ? Image.memory(
+                    advocate.photoBytes!,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                  )
+                : advocate.image.isEmpty
+                    ? InitialsAvatar(name: advocate.name, size: 72)
+                    : Image.asset(
+                        advocate.image,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                      ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -411,24 +575,28 @@ class _AdvocateListCard extends StatelessWidget {
                     Text.rich(
                       TextSpan(
                         children: [
-                          TextSpan(
-                            text: advocate.price,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              height: 1.5,
-                              letterSpacing: -0.31,
-                              color: AppColors.textPrimary,
+                          // Fee is not collected at onboarding yet; hide the
+                          // "/hr" price part until the advocate sets one.
+                          if (advocate.price.isNotEmpty) ...[
+                            TextSpan(
+                              text: advocate.price,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                height: 1.5,
+                                letterSpacing: -0.31,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
-                          ),
-                          const TextSpan(
-                            text: '/hr ',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 16 / 12,
-                              color: AppColors.textGrey,
+                            const TextSpan(
+                              text: '/hr ',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 16 / 12,
+                                color: AppColors.textGrey,
+                              ),
                             ),
-                          ),
+                          ],
                           TextSpan(
                             text: advocate.availability,
                             style: const TextStyle(
@@ -492,6 +660,40 @@ class _AdvocateListCard extends StatelessWidget {
     height: 16 / 12,
     color: AppColors.textGrey555,
   );
+}
+
+/// Fallback avatar with the advocate's initials, shown when the advocate has
+/// no uploaded photo. Shared by the client browse/booking screens.
+class InitialsAvatar extends StatelessWidget {
+  const InitialsAvatar({super.key, required this.name, required this.size});
+
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts =
+        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final initials = parts.isEmpty
+        ? '?'
+        : parts.take(2).map((p) => p[0].toUpperCase()).join();
+    return Container(
+      width: size,
+      height: size,
+      color: AppColors.progressTrack,
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontSize: size * 0.32,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DotSeparator extends StatelessWidget {

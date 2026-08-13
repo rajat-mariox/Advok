@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../AppNavigation/student_nav_screen.dart';
 import '../../Services/approval_status_poller.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
 import '../RegistrationStatus/registration_rejected_screen.dart';
 
@@ -238,7 +239,10 @@ class _VerificationSubmittedScreenState
           const SizedBox(height: 12),
           _AccessRow('Mentorship Access', unlocked: _approved),
           _AccessRow('Internship Portal', unlocked: _approved),
-          _AccessRow('Senior Advocate Queries', unlocked: _approved),
+          _AccessRow(
+            '${CountryCatalog.terms.seniorTitle} Queries',
+            unlocked: _approved,
+          ),
           _AccessRow('Certificates', unlocked: _approved, isLast: true),
         ],
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../MessagesScreen/chat_screen.dart';
@@ -707,28 +708,11 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
               ],
             ),
           ),
-          Material(
-            color: AppColors.fillGrey,
+          SessionAvatar(
+            size: 44,
             borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: widget.onFirmTap,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.borderGrey),
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    'assets/icons/ic_role_firm.svg',
-                    width: 20,
-                    height: 20,
-                  ),
-                ),
-              ),
-            ),
+            fallbackIcon: 'assets/icons/ic_role_firm.svg',
+            onTap: widget.onFirmTap,
           ),
         ],
       ),

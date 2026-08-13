@@ -1,3 +1,151 @@
+/// Country-specific legal-system wording and options used across the app.
+///
+/// The defaults describe the Indian system ("Advocate", Bar Council, Indian
+/// courts). Countries with a different legal system (currently the US)
+/// override the relevant fields, so the same screens render the right
+/// terminology and pickers everywhere.
+class LegalTerms {
+  const LegalTerms({
+    this.lawyerSingular = 'Advocate',
+    this.lawyerPlural = 'Advocates',
+    this.juniorTitle = 'Junior Advocate',
+    this.juniorSubtitle = 'Less than 10 years of practice',
+    this.juniorNote = 'You will be guided by senior advocates',
+    this.seniorTitle = 'Senior Advocate',
+    this.seniorSubtitle = '10+ years of practice',
+    this.seniorNote = 'Designated by the High Court or Supreme Court',
+    this.mentorFieldLabel = 'Senior Advocate Name',
+    this.mentorRequiredForJunior = true,
+    this.licenseLabel = 'Bar Registration Number',
+    this.courts = const [
+      'Supreme Court',
+      'High Court',
+      'District Court',
+      'Family Court',
+      'Consumer Court',
+      'Tribunal',
+    ],
+    this.practiceAreaHint = 'e.g. Civil, Criminal, Family, Property',
+    this.practiceAreas = const [
+      'Criminal Law',
+      'Civil Law',
+      'Family Law',
+      'Property Law',
+      'Corporate Law',
+      'Consumer Law',
+      'Labour Law',
+      'Immigration Law',
+      'Cyber Law',
+    ],
+    this.verificationAuthority = 'Bar Council records',
+    this.degreeHint = 'e.g. LLB, LLM',
+    this.usesFirmRoles = false,
+    this.yearsInPracticeOptions = const [],
+    this.firmRoles = const [],
+  });
+
+  /// US legal system: "Attorney", per-state bar licensing, US court structure.
+  static const LegalTerms us = LegalTerms(
+    lawyerSingular: 'Attorney',
+    lawyerPlural: 'Attorneys',
+    juniorTitle: 'Associate Attorney',
+    juniorSubtitle: 'Less than 10 years of practice',
+    juniorNote: 'Works with a supervising attorney or firm',
+    seniorTitle: 'Senior Attorney',
+    seniorSubtitle: '10+ years of practice',
+    seniorNote: 'Solo practitioner, partner, or of counsel',
+    mentorFieldLabel: 'Supervising Attorney Name',
+    mentorRequiredForJunior: false,
+    licenseLabel: 'State Bar License',
+    courts: [
+      'State Trial Court',
+      'State Appellate Court',
+      'State Supreme Court',
+      'Federal District Court',
+      'Federal Court of Appeals',
+      'Family Court',
+      'Bankruptcy Court',
+      'Immigration Court',
+    ],
+    practiceAreaHint: 'e.g. Personal Injury, Immigration, Family Law',
+    practiceAreas: [
+      'Criminal Defense',
+      'Family Law',
+      'Personal Injury',
+      'Immigration',
+      'Employment Law',
+      'Real Estate',
+      'Corporate/Business Law',
+      'Bankruptcy',
+      'Estate Planning',
+      'Intellectual Property',
+      'Tax Law',
+      'Civil Litigation',
+      'Cyber Law',
+    ],
+    verificationAuthority: 'state bar records',
+    degreeHint: 'e.g. J.D., LL.M.',
+    usesFirmRoles: true,
+    yearsInPracticeOptions: [
+      '0–2 years',
+      '3–5 years',
+      '6–10 years',
+      '11–20 years',
+      '20+ years',
+    ],
+    firmRoles: [
+      'Partner',
+      'Associate',
+      'Senior Associate',
+      'Of Counsel',
+      'Counsel',
+      'Staff Attorney',
+      'Solo Practitioner',
+    ],
+  );
+
+  final String lawyerSingular;
+  final String lawyerPlural;
+
+  /// Titles/notes for the two experience tiers on the Describe Yourself step.
+  final String juniorTitle;
+  final String juniorSubtitle;
+  final String juniorNote;
+  final String seniorTitle;
+  final String seniorSubtitle;
+  final String seniorNote;
+
+  /// Mentor/senior field on the professional-details form. In India a junior
+  /// must name their senior advocate; in the US it is optional.
+  final String mentorFieldLabel;
+  final bool mentorRequiredForJunior;
+
+  /// What the license number field is called locally.
+  final String licenseLabel;
+
+  final List<String> courts;
+  final String practiceAreaHint;
+
+  /// The fixed practice-area list for this country. Single source of truth:
+  /// the onboarding/edit-profile dropdowns and the client home screen's
+  /// Legal Categories tiles are both generated from it, so tapping a
+  /// category matches attorneys exactly.
+  final List<String> practiceAreas;
+
+  /// Which authority credentials are checked against ("Bar Council records" /
+  /// "state bar records") — used in verification/help copy.
+  final String verificationAuthority;
+
+  /// Hint for the law-student degree field.
+  final String degreeHint;
+
+  /// US-style classification: instead of the fixed Junior/Senior tier cards,
+  /// the Describe Yourself step asks for Years in Practice + Firm Role.
+  final bool usesFirmRoles;
+  final List<String> yearsInPracticeOptions;
+  final List<String> firmRoles;
+}
+
 /// Per-country data used across the app: phone number validation rules and
 /// the list of states/provinces shown in address forms.
 class CountryProfile {
@@ -7,6 +155,7 @@ class CountryProfile {
     required this.maxDigits,
     this.stateLabel = 'State',
     this.states = const [],
+    this.legal = const LegalTerms(),
   });
 
   final String name;
@@ -18,6 +167,9 @@ class CountryProfile {
   /// What the first-level division is called locally (State/Province/…).
   final String stateLabel;
   final List<String> states;
+
+  /// Legal-system terminology and options for this country.
+  final LegalTerms legal;
 
   bool isValidPhone(String phone) {
     final digits = phone.replaceAll(RegExp(r'\D'), '').length;
@@ -42,6 +194,9 @@ class CountryCatalog {
   /// by the onboarding address forms.
   static CountryProfile selected = _fallback;
 
+  /// Shorthand for the selected country's legal terminology.
+  static LegalTerms get terms => selected.legal;
+
   static void select(String countryName) {
     selected = byName(countryName);
   }
@@ -58,6 +213,7 @@ class CountryCatalog {
       name: 'United States',
       minDigits: 10,
       maxDigits: 10,
+      legal: LegalTerms.us,
       states: [
         'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
         'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho',

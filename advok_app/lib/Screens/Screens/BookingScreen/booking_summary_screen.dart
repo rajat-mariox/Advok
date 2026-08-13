@@ -171,12 +171,21 @@ class BookingSummaryScreen extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              advocate.image,
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-            ),
+            child: advocate.photoBytes != null
+                ? Image.memory(
+                    advocate.photoBytes!,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                  )
+                : advocate.image.isEmpty
+                    ? InitialsAvatar(name: advocate.name, size: 56)
+                    : Image.asset(
+                        advocate.image,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                      ),
           ),
           const SizedBox(width: 16),
           Column(

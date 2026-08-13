@@ -28,13 +28,17 @@ function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile
 /** Advocate onboarding — the aggregated data of all 5 registration steps. */
 router.post('/advocate', requireRole('advocate'), (req: AuthedRequest, res) => {
   const body = req.body ?? {};
+  // Older app builds sent the license as `barRegistrationNumber`.
+  if (body.professional && body.professional.licenseNumber == null) {
+    body.professional.licenseNumber = body.professional.barRegistrationNumber;
+  }
   const missing = missingFields(body, [
     'advocateType',
     'location.state',
     'location.district',
     'professional.fullName',
     'professional.email',
-    'professional.barRegistrationNumber',
+    'professional.licenseNumber',
     'professional.primaryCourt',
     'professional.practiceArea',
   ]);
@@ -43,6 +47,9 @@ router.post('/advocate', requireRole('advocate'), (req: AuthedRequest, res) => {
   }
   const profile: AdvocateProfile = {
     advocateType: body.advocateType,
+    photo: typeof body.photo === 'string' && body.photo ? body.photo : undefined,
+    yearsInPractice: typeof body.yearsInPractice === 'string' ? body.yearsInPractice : undefined,
+    firmRole: typeof body.firmRole === 'string' ? body.firmRole : undefined,
     purposes: Array.isArray(body.purposes) ? body.purposes : [],
     location: {
       state: body.location.state,
@@ -53,7 +60,7 @@ router.post('/advocate', requireRole('advocate'), (req: AuthedRequest, res) => {
       fullName: body.professional.fullName,
       seniorAdvocateName: body.professional.seniorAdvocateName,
       email: body.professional.email,
-      barRegistrationNumber: body.professional.barRegistrationNumber,
+      licenseNumber: body.professional.licenseNumber,
       primaryCourt: body.professional.primaryCourt,
       practiceArea: body.professional.practiceArea,
     },

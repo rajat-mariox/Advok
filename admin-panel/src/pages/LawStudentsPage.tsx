@@ -1,15 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconFile, IconSearch, IconX } from '../components/Icon';
-import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
+import {
+  AccountActions,
+  Avatar,
+  Badge,
+  Drawer,
+  FilterChips,
+  InfoRow,
+  PageHeader,
+} from '../components/ui';
 import type { AdminStudent, StudentVerificationStatus } from '../types';
 import {
+  deleteBackendUser,
   fetchBackendUsers,
   hasSubmittedProfile,
   reviewRegistration,
+  suspendBackendUser,
   toAdminStudent,
+  unsuspendBackendUser,
 } from '../utils/backend';
 
-const FILTERS = ['All', 'Pending Verification', 'Verified', 'Rejected'];
+const FILTERS = ['All', 'Pending Verification', 'Verified', 'Rejected', 'Suspended'];
 
 export default function LawStudentsPage() {
   const [students, setStudents] = useState<AdminStudent[]>([]);
@@ -19,13 +30,15 @@ export default function LawStudentsPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () =>
     fetchBackendUsers('law_student')
       .then((users) => setStudents(users.filter(hasSubmittedProfile).map(toAdminStudent)))
       .catch(() =>
         setLoadError('Could not load students. Make sure the backend is running on port 4000.'),
-      )
-      .finally(() => setLoading(false));
+      );
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
   }, []);
 
   const list = useMemo(() => {
@@ -36,7 +49,8 @@ export default function LawStudentsPage() {
         !q ||
         s.fullName.toLowerCase().includes(q) ||
         s.college.toLowerCase().includes(q) ||
-        s.course.toLowerCase().includes(q);
+        s.course.toLowerCase().includes(q) ||
+        s.phone.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
   }, [students, filter, query]);
@@ -47,6 +61,32 @@ export default function LawStudentsPage() {
     const ok = await reviewRegistration(id, verification);
     if (ok) {
       setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, verification } : s)));
+    }
+  };
+
+  const suspendUser = async (id: string) => {
+    const reason = window.prompt('Reason for suspension (optional):');
+    if (reason === null) return;
+    const ok = await suspendBackendUser(id, reason.trim() || undefined);
+    if (ok) {
+      setStudents((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, verification: 'Suspended' } : s)),
+      );
+    }
+  };
+
+  // The backend restores the pre-suspension status, so reload to pick it up.
+  const unsuspendUser = async (id: string) => {
+    const ok = await unsuspendBackendUser(id);
+    if (ok) await load();
+  };
+
+  const deleteUser = async (id: string) => {
+    if (!window.confirm('Permanently delete this student account? This cannot be undone.')) return;
+    const ok = await deleteBackendUser(id);
+    if (ok) {
+      setStudents((prev) => prev.filter((s) => s.id !== id));
+      setSelectedId(null);
     }
   };
 
@@ -77,6 +117,7 @@ export default function LawStudentsPage() {
           <thead>
             <tr>
               <th>Student</th>
+              <th>Phone</th>
               <th>College / University</th>
               <th>Course</th>
               <th>Academic Year</th>
@@ -90,13 +131,13 @@ export default function LawStudentsPage() {
               <tr key={s.id} className="clickable" onClick={() => setSelectedId(s.id)}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={s.fullName} size={34} square />
+                    <Avatar name={s.fullName} photo={s.photo} size={34} square />
                     <div>
                       <div className="cell-strong">{s.fullName}</div>
-                      <div className="cell-sub">{s.location}</div>
                     </div>
                   </div>
                 </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{s.phone}</td>
                 <td>{s.college}</td>
                 <td>{s.course}</td>
                 <td>{s.academicYear ?? '—'}</td>
@@ -121,7 +162,7 @@ export default function LawStudentsPage() {
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
                   {loading ? 'Loading students…' : loadError || 'No students match this filter.'}
                 </td>
               </tr>
@@ -135,36 +176,44 @@ export default function LawStudentsPage() {
           title="Student Verification"
           onClose={() => setSelectedId(null)}
           footer={
-            selected.verification === 'Pending Verification' ? (
-              <div className="row" style={{ gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {selected.verification === 'Pending Verification' ? (
+                <div className="row" style={{ gap: 10 }}>
+                  <button
+                    className="btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={() => setVerification(selected.id, 'Verified')}
+                  >
+                    <IconCheck /> Verify ID
+                  </button>
+                  <button
+                    className="btn-danger"
+                    style={{ flex: 1, height: 44, borderRadius: 14 }}
+                    onClick={() => setVerification(selected.id, 'Rejected')}
+                  >
+                    <IconX /> Reject
+                  </button>
+                </div>
+              ) : selected.verification !== 'Suspended' ? (
                 <button
-                  className="btn-primary"
-                  style={{ flex: 1 }}
-                  onClick={() => setVerification(selected.id, 'Verified')}
+                  className="btn-secondary"
+                  style={{ width: '100%' }}
+                  onClick={() => setVerification(selected.id, 'Pending Verification')}
                 >
-                  <IconCheck /> Verify ID
+                  Move Back to Review
                 </button>
-                <button
-                  className="btn-danger"
-                  style={{ flex: 1, height: 44, borderRadius: 14 }}
-                  onClick={() => setVerification(selected.id, 'Rejected')}
-                >
-                  <IconX /> Reject
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn-secondary"
-                style={{ width: '100%' }}
-                onClick={() => setVerification(selected.id, 'Pending Verification')}
-              >
-                Move Back to Review
-              </button>
-            )
+              ) : null}
+              <AccountActions
+                suspended={selected.verification === 'Suspended'}
+                onSuspend={() => suspendUser(selected.id)}
+                onUnsuspend={() => unsuspendUser(selected.id)}
+                onDelete={() => deleteUser(selected.id)}
+              />
+            </div>
           }
         >
           <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.fullName} size={56} square />
+            <Avatar name={selected.fullName} photo={selected.photo} size={56} square />
             <div>
               <div className="row" style={{ gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.fullName}</span>
@@ -188,6 +237,7 @@ export default function LawStudentsPage() {
           )}
 
           <div className="eyebrow" style={{ marginBottom: 4 }}>Verification Details</div>
+          <InfoRow k="Login Phone" v={selected.phone} />
           <InfoRow k="Email Address" v={selected.email} />
           <InfoRow k="College / University" v={selected.college} />
           <InfoRow k="Course" v={selected.course} />

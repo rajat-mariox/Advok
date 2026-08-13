@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../../LawStudentRegistration/verification_submitted_screen.dart';
 import '../NotificationScreen/notification_screen.dart';
 import '../AdvokAiScreen/advok_ai_screen.dart';
@@ -146,9 +148,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Recommended Advocates',
-              style: TextStyle(
+            Text(
+              'Recommended ${CountryCatalog.terms.lawyerPlural}',
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 height: 1.5,
@@ -574,7 +576,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
-  static const List<
+  static List<
     ({
       String? svg,
       IconData? iconData,
@@ -583,7 +585,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       bool locked,
     })
   >
-  _tools = [
+  get _tools => [
     (
       svg: 'assets/icons/ic_bot.svg',
       iconData: null,
@@ -636,7 +638,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     (
       svg: 'assets/icons/ic_qa_chat.svg',
       iconData: null,
-      title: 'Senior Advocate Queries',
+      title: '${CountryCatalog.terms.seniorTitle} Queries',
       subtitle: 'Verify to unlock',
       locked: true,
     ),
@@ -831,20 +833,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               height: 40,
               child: Stack(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.fillGrey,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.borderGrey),
-                    ),
-                    child: Center(
-                      child: SvgPicture.asset(
-                        'assets/icons/ic_bell.svg',
-                        width: 18,
-                        height: 18,
-                      ),
+                  Center(
+                    child: SvgPicture.asset(
+                      'assets/icons/ic_bell.svg',
+                      width: 20,
+                      height: 20,
                     ),
                   ),
                   Positioned(
@@ -866,22 +859,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           const SizedBox(width: 10),
           GestureDetector(
             onTap: widget.onProfileTap,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.fillGrey,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.borderGrey, width: 1.4),
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  'assets/icons/ic_user.svg',
-                  width: 18,
-                  height: 18,
-                ),
-              ),
-            ),
+            child: const SessionAvatar(),
           ),
         ],
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../FindMentorsScreen/find_mentors_screen.dart';
 
 const int _maxQuestionLength = 500;
@@ -192,11 +193,13 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Ask a question and responses from senior advocates\n'
+          Text(
+            'Ask a question and responses from '
+            '${CountryCatalog.terms.seniorTitle.toLowerCase()}s\n'
             'will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
+            style:
+                const TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
           ),
         ],
       ),
@@ -300,10 +303,11 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
                 border: Border(top: BorderSide(color: AppColors.divider)),
               ),
               padding: const EdgeInsets.all(16),
-              child: const Text(
-                'Awaiting response — senior advocates typically reply '
-                'within 24 hours.',
-                style: TextStyle(
+              child: Text(
+                'Awaiting response — '
+                '${CountryCatalog.terms.seniorTitle.toLowerCase()}s '
+                'typically reply within 24 hours.',
+                style: const TextStyle(
                   fontSize: 13,
                   height: 19.5 / 13,
                   color: AppColors.textGrey555,
@@ -391,10 +395,10 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.borderGrey),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Ask Legal Questions',
             style: TextStyle(
               fontSize: 15,
@@ -404,11 +408,12 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
               color: AppColors.textPrimary,
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
-            'Get guidance from senior advocates and mentors. '
+            'Get guidance from '
+            '${CountryCatalog.terms.seniorTitle.toLowerCase()}s and mentors. '
             'Responses within 24 hours.',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
               height: 19 / 13,
               letterSpacing: -0.08,

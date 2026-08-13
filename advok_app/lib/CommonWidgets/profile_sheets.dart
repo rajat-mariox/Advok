@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../Services/api_service.dart';
 import '../Utils/AppColors/app_colors.dart';
+import '../Utils/CountryData/country_catalog.dart';
 
 /// Loads an admin-managed app page (Terms, Privacy, ...) from the backend and
 /// shows it as a [ContentSheet]. Falls back to [fallback] if the server is
@@ -1115,9 +1116,15 @@ class ShareSheetState extends State<ShareSheet> {
   }
 }
 
-class AboutSheet extends StatelessWidget {
+class AboutSheet extends StatefulWidget {
   const AboutSheet({super.key});
 
+  @override
+  State<AboutSheet> createState() => _AboutSheetState();
+}
+
+class _AboutSheetState extends State<AboutSheet> {
+  // App properties stay local — they describe this build, not CMS content.
   static const List<({String label, String value})> _facts = [
     (label: 'Version', value: '2.1.0 (Build 241)'),
     (label: 'Platform', value: 'iOS & Android'),
@@ -1127,9 +1134,40 @@ class AboutSheet extends StatelessWidget {
     (label: 'Website', value: 'www.advok.app'),
   ];
 
+  /// Admin-managed "About ADVOK" sections from the CMS (empty until loaded;
+  /// stays empty offline so the sheet still opens with the app facts).
+  List<({String title, String body})> _sections = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final page = await ApiService.fetchCmsPage('about-us');
+      final sections = (page['sections'] as List)
+          .whereType<Map<String, dynamic>>()
+          .map((s) => (
+                title: (s['title'] as String?) ?? '',
+                body: (s['body'] as String?) ?? '',
+              ))
+          .where((s) => s.body.isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() => _sections = sections);
+    } catch (_) {
+      // Server unreachable — keep the static sheet.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1179,89 +1217,127 @@ class AboutSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/images/app_logo.png',
-                    width: 72,
-                    height: 72,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'ADVOK',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    height: 33 / 22,
-                    letterSpacing: -0.81,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'LEGAL PLATFORM',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    height: 16 / 12,
-                    letterSpacing: 1.2,
-                    color: AppColors.textGrey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          for (int i = 0; i < _facts.length; i++) ...[
-            if (i > 0) const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.fillGrey,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    _facts[i].label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 18 / 12,
-                      color: AppColors.textGrey555,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: Image.asset(
+                            'assets/images/app_logo.png',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'ADVOK',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            height: 33 / 22,
+                            letterSpacing: -0.81,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'LEGAL PLATFORM',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            height: 16 / 12,
+                            letterSpacing: 1.2,
+                            color: AppColors.textGrey,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    _facts[i].value,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 18 / 12,
-                      color: AppColors.textPrimary,
+                  // Admin-managed "About ADVOK" content from the CMS.
+                  for (final section in _sections) ...[
+                    const SizedBox(height: 16),
+                    if (section.title.isNotEmpty) ...[
+                      Text(
+                        section.title,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          height: 1.5,
+                          letterSpacing: -0.08,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      section.body,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 21 / 13,
+                        letterSpacing: -0.08,
+                        color: AppColors.textGrey555,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  for (int i = 0; i < _facts.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.fillGrey,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _facts[i].label,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              height: 18 / 12,
+                              color: AppColors.textGrey555,
+                            ),
+                          ),
+                          Text(
+                            _facts[i].value,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              height: 18 / 12,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text(
+                    '© 2025 ADVOK Technologies Inc. All rights reserved.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.5,
+                      letterSpacing: 0.06,
+                      color: AppColors.textGrey,
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          const Text(
-            '© 2025 ADVOK Technologies Inc. All rights reserved.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              height: 1.5,
-              letterSpacing: 0.06,
-              color: AppColors.textGrey,
             ),
           ),
         ],
@@ -1280,7 +1356,7 @@ class RolePickerSheet extends StatefulWidget {
 }
 
 class RolePickerSheetState extends State<RolePickerSheet> {
-  static const List<({String icon, String title, String subtitle})> _roles = [
+  static List<({String icon, String title, String subtitle})> get _roles => [
     (
       icon: 'assets/icons/ic_role_client.svg',
       title: 'Client',
@@ -1288,7 +1364,7 @@ class RolePickerSheetState extends State<RolePickerSheet> {
     ),
     (
       icon: 'assets/icons/ic_role_advocate.svg',
-      title: 'Advocate',
+      title: CountryCatalog.terms.lawyerSingular,
       subtitle: 'Manage cases & clients',
     ),
     (

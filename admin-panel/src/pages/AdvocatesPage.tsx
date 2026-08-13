@@ -1,15 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconSearch, IconX } from '../components/Icon';
-import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
+import {
+  AccountActions,
+  Avatar,
+  Badge,
+  Drawer,
+  FilterChips,
+  InfoRow,
+  PageHeader,
+} from '../components/ui';
 import type { AdminAdvocate, VerificationStatus } from '../types';
 import {
+  deleteBackendUser,
   fetchBackendUsers,
   hasSubmittedProfile,
   reviewRegistration,
+  suspendBackendUser,
   toAdminAdvocate,
+  unsuspendBackendUser,
 } from '../utils/backend';
 
-const FILTERS = ['All', 'Junior', 'Senior', 'Pending Review', 'Verified', 'Rejected'];
+const FILTERS = ['All', 'Junior', 'Senior', 'Pending Review', 'Verified', 'Rejected', 'Suspended'];
 
 export default function AdvocatesPage() {
   const [advocates, setAdvocates] = useState<AdminAdvocate[]>([]);
@@ -19,13 +30,15 @@ export default function AdvocatesPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () =>
     fetchBackendUsers('advocate')
       .then((users) => setAdvocates(users.filter(hasSubmittedProfile).map(toAdminAdvocate)))
       .catch(() =>
         setLoadError('Could not load advocates. Make sure the backend is running on port 4000.'),
-      )
-      .finally(() => setLoading(false));
+      );
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
   }, []);
 
   const list = useMemo(() => {
@@ -40,7 +53,8 @@ export default function AdvocatesPage() {
         !q ||
         a.name.toLowerCase().includes(q) ||
         a.specialty.toLowerCase().includes(q) ||
-        a.barRegNo.toLowerCase().includes(q);
+        a.barRegNo.toLowerCase().includes(q) ||
+        a.phone.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
   }, [advocates, filter, query]);
@@ -51,6 +65,32 @@ export default function AdvocatesPage() {
     const ok = await reviewRegistration(id, verification);
     if (ok) {
       setAdvocates((prev) => prev.map((a) => (a.id === id ? { ...a, verification } : a)));
+    }
+  };
+
+  const suspendUser = async (id: string) => {
+    const reason = window.prompt('Reason for suspension (optional):');
+    if (reason === null) return;
+    const ok = await suspendBackendUser(id, reason.trim() || undefined);
+    if (ok) {
+      setAdvocates((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, verification: 'Suspended' } : a)),
+      );
+    }
+  };
+
+  // The backend restores the pre-suspension status, so reload to pick it up.
+  const unsuspendUser = async (id: string) => {
+    const ok = await unsuspendBackendUser(id);
+    if (ok) await load();
+  };
+
+  const deleteUser = async (id: string) => {
+    if (!window.confirm('Permanently delete this advocate account? This cannot be undone.')) return;
+    const ok = await deleteBackendUser(id);
+    if (ok) {
+      setAdvocates((prev) => prev.filter((a) => a.id !== id));
+      setSelectedId(null);
     }
   };
 
@@ -81,8 +121,9 @@ export default function AdvocatesPage() {
           <thead>
             <tr>
               <th>Advocate</th>
+              <th>Phone</th>
               <th>Type</th>
-              <th>Bar Reg. No.</th>
+              <th>Bar License / Reg. No.</th>
               <th>Court · Location</th>
               <th>Exp.</th>
               <th>Cases</th>
@@ -95,13 +136,14 @@ export default function AdvocatesPage() {
               <tr key={a.id} className="clickable" onClick={() => setSelectedId(a.id)}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={a.name} size={34} square />
+                    <Avatar name={a.name} photo={a.photo} size={34} square />
                     <div>
                       <div className="cell-strong">{a.name}</div>
                       <div className="cell-sub">{a.specialty}</div>
                     </div>
                   </div>
                 </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{a.phone}</td>
                 <td>{a.type}</td>
                 <td style={{ fontFamily: 'inherit', fontWeight: 600 }}>{a.barRegNo}</td>
                 <td>
@@ -110,7 +152,7 @@ export default function AdvocatesPage() {
                     {a.city}, {a.state}
                   </div>
                 </td>
-                <td>{a.experienceYears > 0 ? `${a.experienceYears}+ yrs` : '—'}</td>
+                <td>{a.yearsInPractice ?? (a.experienceYears > 0 ? `${a.experienceYears}+ yrs` : '—')}</td>
                 <td>{a.cases}</td>
                 <td>
                   {a.pricePerHr > 0 ? (
@@ -129,7 +171,7 @@ export default function AdvocatesPage() {
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
+                <td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
                   {loading
                     ? 'Loading advocates…'
                     : loadError || 'No advocates match this filter.'}
@@ -145,36 +187,44 @@ export default function AdvocatesPage() {
           title="Advocate Details"
           onClose={() => setSelectedId(null)}
           footer={
-            selected.verification === 'Pending Review' ? (
-              <div className="row" style={{ gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {selected.verification === 'Pending Review' ? (
+                <div className="row" style={{ gap: 10 }}>
+                  <button
+                    className="btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={() => setVerification(selected.id, 'Verified')}
+                  >
+                    <IconCheck /> Approve
+                  </button>
+                  <button
+                    className="btn-danger"
+                    style={{ flex: 1, height: 44, borderRadius: 14 }}
+                    onClick={() => setVerification(selected.id, 'Rejected')}
+                  >
+                    <IconX /> Reject
+                  </button>
+                </div>
+              ) : selected.verification !== 'Suspended' ? (
                 <button
-                  className="btn-primary"
-                  style={{ flex: 1 }}
-                  onClick={() => setVerification(selected.id, 'Verified')}
+                  className="btn-secondary"
+                  style={{ width: '100%' }}
+                  onClick={() => setVerification(selected.id, 'Pending Review')}
                 >
-                  <IconCheck /> Approve
+                  Move Back to Review
                 </button>
-                <button
-                  className="btn-danger"
-                  style={{ flex: 1, height: 44, borderRadius: 14 }}
-                  onClick={() => setVerification(selected.id, 'Rejected')}
-                >
-                  <IconX /> Reject
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn-secondary"
-                style={{ width: '100%' }}
-                onClick={() => setVerification(selected.id, 'Pending Review')}
-              >
-                Move Back to Review
-              </button>
-            )
+              ) : null}
+              <AccountActions
+                suspended={selected.verification === 'Suspended'}
+                onSuspend={() => suspendUser(selected.id)}
+                onUnsuspend={() => unsuspendUser(selected.id)}
+                onDelete={() => deleteUser(selected.id)}
+              />
+            </div>
           }
         >
           <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.name} size={56} square />
+            <Avatar name={selected.name} photo={selected.photo} size={56} square />
             <div>
               <div className="row" style={{ gap: 8 }}>
                 <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.name}</span>
@@ -187,10 +237,21 @@ export default function AdvocatesPage() {
           </div>
 
           <div className="eyebrow" style={{ marginBottom: 4 }}>Professional Details</div>
+          <InfoRow k="Login Phone" v={selected.phone} />
           <InfoRow k="Email Address" v={selected.email} />
-          <InfoRow k="Bar Registration Number" v={selected.barRegNo} />
+          <InfoRow
+            k={
+              selected.country === 'United States'
+                ? 'State Bar License'
+                : 'Bar Registration Number'
+            }
+            v={selected.barRegNo}
+          />
           <InfoRow k="Primary Practice Court" v={selected.court} />
           <InfoRow k="Practice Area" v={selected.specialty} />
+          {selected.yearsInPractice && (
+            <InfoRow k="Years in Practice" v={selected.yearsInPractice} />
+          )}
           {selected.type === 'Junior Advocate' && (
             <InfoRow k="Senior Advocate" v={selected.seniorAdvocateName ?? '—'} />
           )}
@@ -222,7 +283,10 @@ export default function AdvocatesPage() {
           <InfoRow k="Total Cases" v={selected.cases} />
           <InfoRow
             k="Experience"
-            v={selected.experienceYears > 0 ? `${selected.experienceYears}+ years` : '—'}
+            v={
+              selected.yearsInPractice ??
+              (selected.experienceYears > 0 ? `${selected.experienceYears}+ years` : '—')
+            }
           />
           <InfoRow k="Rating" v={selected.rating ? `★ ${selected.rating}` : 'Not rated yet'} />
           <InfoRow

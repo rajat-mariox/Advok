@@ -12,6 +12,7 @@ import '../Screens/LawFirmRegistration/firm_registration_submitted_screen.dart';
 import '../Screens/LawFirmRegistration/register_firm_screen.dart';
 import '../Screens/LawStudentRegistration/student_verification_screen.dart';
 import '../Screens/LawStudentRegistration/verification_submitted_screen.dart';
+import '../Screens/RegistrationStatus/account_suspended_screen.dart';
 import '../Screens/RegistrationStatus/registration_rejected_screen.dart';
 import 'api_service.dart';
 
@@ -37,6 +38,15 @@ class PostLoginNavigator {
         MaterialPageRoute(builder: (_) => screen),
         (route) => false,
       );
+    }
+
+    // Suspension locks out every role, including clients.
+    if (status == 'suspended') {
+      goHome(AccountSuspendedScreen(
+        role: role,
+        reason: Session.user?['suspensionReason'] as String?,
+      ));
+      return;
     }
 
     if (role == 'client') {

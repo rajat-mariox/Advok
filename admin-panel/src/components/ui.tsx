@@ -51,10 +51,13 @@ export function Avatar({
   name,
   size = 36,
   square = false,
+  photo,
 }: {
   name: string;
   size?: number;
   square?: boolean;
+  /** Profile picture as a data URL (uploaded from the app); falls back to initials. */
+  photo?: string;
 }) {
   const initials = name
     .split(' ')
@@ -66,9 +69,17 @@ export function Avatar({
   return (
     <span
       className={`avatar${square ? ' avatar-sq' : ''}`}
-      style={{ width: size, height: size, fontSize: size * 0.36 }}
+      style={{ width: size, height: size, fontSize: size * 0.36, overflow: 'hidden' }}
     >
-      {initials}
+      {photo ? (
+        <img
+          src={photo}
+          alt={name}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        initials
+      )}
     </span>
   );
 }
@@ -181,6 +192,37 @@ export function FilterChips({
           {o}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Suspend/Reactivate + Delete row shown in every user drawer footer. */
+export function AccountActions({
+  suspended,
+  onSuspend,
+  onUnsuspend,
+  onDelete,
+}: {
+  suspended: boolean;
+  onSuspend: () => void;
+  onUnsuspend: () => void;
+  onDelete: () => void;
+}) {
+  const btn = { flex: 1, height: 44, borderRadius: 14 } as const;
+  return (
+    <div className="row" style={{ gap: 10 }}>
+      {suspended ? (
+        <button className="btn-primary" style={btn} onClick={onUnsuspend}>
+          Reactivate Account
+        </button>
+      ) : (
+        <button className="btn-secondary" style={btn} onClick={onSuspend}>
+          Suspend Account
+        </button>
+      )}
+      <button className="btn-danger" style={btn} onClick={onDelete}>
+        Delete Account
+      </button>
     </div>
   );
 }

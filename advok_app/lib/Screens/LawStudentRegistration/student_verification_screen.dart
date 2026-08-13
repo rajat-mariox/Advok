@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../CommonWidgets/circle_back_button.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import 'verification_submitted_screen.dart';
 
 const List<String> _academicYears = [
@@ -128,7 +129,7 @@ class _StudentVerificationScreenState extends State<StudentVerificationScreen> {
                       const SizedBox(height: 8),
                       _TextInputField(
                         controller: _courseController,
-                        hint: 'e.g. J.D., LLB, LLM',
+                        hint: CountryCatalog.terms.degreeHint,
                         prefixIcon: 'assets/icons/ic_book_open.svg',
                         onChanged: (_) => setState(() {}),
                         showCheck: _courseController.text.trim().isNotEmpty,

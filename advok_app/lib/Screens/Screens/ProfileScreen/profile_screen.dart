@@ -1,11 +1,16 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../../ChooseRoleScreen/choose_role_screen.dart';
 import '../../SelectCountryScreen/select_country_screen.dart';
 import '../../../CommonWidgets/profile_sheets.dart';
+import 'edit_profile_screen.dart';
 import 'help_support_screen.dart';
 
 /// Profile tab of the client flow.
@@ -20,6 +25,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
   String _location = '';
   final String _about = '';
+
+  /// Advocate profile photo from the session (base64 data URL → bytes).
+  Uint8List? get _photoBytes {
+    final photo = Session.photo;
+    if (photo == null || photo.isEmpty) return null;
+    final comma = photo.indexOf(',');
+    try {
+      return base64Decode(comma >= 0 ? photo.substring(comma + 1) : photo);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openEditProfile() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+    );
+    if (changed == true && mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +88,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     value: '0 ongoing',
                   ),
                   _buildInsetDivider(),
-                  const ProfileInfoRow(
+                  ProfileInfoRow(
                     icon: 'assets/icons/ic_bookmark.svg',
-                    label: 'Saved Advocates',
+                    label: 'Saved ${CountryCatalog.terms.lawyerPlural}',
                     value: '0 favorites',
                   ),
                 ],
@@ -74,6 +98,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildSectionLabel('Preferences'),
               _buildSectionCard(
                 children: [
+                  ProfileMenuRow(
+                    icon: 'assets/icons/ic_edit.svg',
+                    title: 'Edit Profile',
+                    subtitle: Session.role == 'advocate'
+                        ? 'Photo, name, email, practice area'
+                        : 'Photo, name, email',
+                    onTap: _openEditProfile,
+                  ),
+                  _buildInsetDivider(),
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_bell.svg',
                     title: 'Notifications',
@@ -328,10 +361,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'of your account credentials.',
           ),
           (
-            title: '4. Advocate Verification',
+            title: '4. Legal Professional Verification',
             body:
-                'All advocates listed on ADVOK are independently verified '
-                'against Bar Council records.',
+                'All legal professionals listed on ADVOK are independently '
+                'verified against Bar Council or state bar records.',
           ),
           (
             title: '5. Payment & Refunds',
@@ -607,21 +640,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.borderGrey, width: 1.4),
             ),
-            child: Center(
-              child: SvgPicture.asset(
-                'assets/icons/ic_user.svg',
-                width: 26,
-                height: 26,
-              ),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: _photoBytes != null
+                ? Image.memory(
+                    _photoBytes!,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                  )
+                : Center(
+                    child: SvgPicture.asset(
+                      'assets/icons/ic_user.svg',
+                      width: 26,
+                      height: 26,
+                    ),
+                  ),
           ),
           Positioned(
             right: -4,
             bottom: -4,
             child: GestureDetector(
-              onTap: () {
-                // TODO: Change the profile photo.
-              },
+              onTap: _openEditProfile,
               child: Container(
                 width: 24,
                 height: 24,
