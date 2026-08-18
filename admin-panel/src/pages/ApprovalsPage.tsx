@@ -305,15 +305,33 @@ export default function ApprovalsPage() {
                 <InfoRow k="Senior Advocate" v={selected.profile.professional?.seniorAdvocateName || '—'} />
               )}
               <InfoRow k="Email" v={selected.profile.professional?.email ?? '—'} />
-              <InfoRow
-                k={selected.country === 'United States' ? 'State Bar License' : 'Bar Registration No.'}
-                v={
-                  selected.profile.professional?.licenseNumber ??
-                  selected.profile.professional?.barRegistrationNumber ??
-                  '—'
-                }
-              />
-              <InfoRow k="Primary Court" v={selected.profile.professional?.primaryCourt ?? '—'} />
+              {(selected.profile.professional?.barAdmissions ?? []).length > 0 ? (
+                <>
+                  {selected.profile.professional.barAdmissions.map((a: any, i: number) => (
+                    <InfoRow
+                      key={i}
+                      k={`Bar Admission ${i + 1}`}
+                      v={`${a.state} — #${a.barNumber} (${a.licenseStatus})`}
+                    />
+                  ))}
+                  <InfoRow
+                    k="Federal Courts"
+                    v={(selected.profile.professional?.federalCourtAdmissions ?? []).join(', ') || '—'}
+                  />
+                </>
+              ) : (
+                <>
+                  <InfoRow
+                    k={selected.country === 'United States' ? 'State Bar Number' : 'Bar Registration No.'}
+                    v={
+                      selected.profile.professional?.licenseNumber ??
+                      selected.profile.professional?.barRegistrationNumber ??
+                      '—'
+                    }
+                  />
+                  <InfoRow k="Primary Court" v={selected.profile.professional?.primaryCourt ?? '—'} />
+                </>
+              )}
               <InfoRow k="Practice Area" v={selected.profile.professional?.practiceArea ?? '—'} />
 
               <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Practice Location</div>

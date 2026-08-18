@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { publicUser, saveDb } from '../db';
 import { requireAuth, type AuthedRequest } from '../middleware/auth';
+import { storePhoto } from '../storage';
 import type {
   AdvocateProfile,
   ClientProfile,
@@ -25,12 +26,22 @@ const str = (v: unknown): string | undefined =>
  *
  * photo: '' removes the picture; omit to keep the current one.
  */
-router.put('/', requireAuth, (req: AuthedRequest, res) => {
+router.put('/', requireAuth, async (req: AuthedRequest, res) => {
   const user = req.user!;
   if (user.role === 'admin' || user.role === null) {
     return res.status(403).json({ error: 'This account cannot edit an app profile' });
   }
   const body = req.body ?? {};
+
+  // Upload the photo to S3 (when configured) before touching the profile.
+  if (typeof body.photo === 'string' && body.photo) {
+    try {
+      body.photo = await storePhoto(body.photo, `photos/${user.id}`);
+    } catch (err) {
+      console.error('Photo upload to S3 failed:', err);
+      return res.status(502).json({ error: 'Photo upload failed, try again' });
+    }
+  }
 
   if (user.role === 'client') {
     // Clients have no onboarding, so create the profile on first edit.

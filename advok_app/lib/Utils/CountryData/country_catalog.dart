@@ -16,7 +16,14 @@ class LegalTerms {
     this.seniorNote = 'Designated by the High Court or Supreme Court',
     this.mentorFieldLabel = 'Senior Advocate Name',
     this.mentorRequiredForJunior = true,
+    this.districtFieldLabel = 'District / City',
+    this.districtFieldHint = 'Enter district or city…',
+    this.districtPublicTerm = 'city/district',
     this.licenseLabel = 'Bar Registration Number',
+    this.courtFieldLabel = 'Primary Practice Court',
+    this.usesBarAdmissions = false,
+    this.licenseStatuses = const [],
+    this.federalCourts = const [],
     this.courts = const [
       'Supreme Court',
       'High Court',
@@ -25,6 +32,10 @@ class LegalTerms {
       'Consumer Court',
       'Tribunal',
     ],
+    this.hearingSectionLabel = 'Hearings & Tasks',
+    this.addHearingLabel = 'Add Hearing',
+    this.hearingInputHint = 'Hearing case / court…',
+    this.hearingNoun = 'hearing',
     this.practiceAreaHint = 'e.g. Civil, Criminal, Family, Property',
     this.practiceAreas = const [
       'Criminal Law',
@@ -56,7 +67,28 @@ class LegalTerms {
     seniorNote: 'Solo practitioner, partner, or of counsel',
     mentorFieldLabel: 'Supervising Attorney Name',
     mentorRequiredForJunior: false,
-    licenseLabel: 'State Bar License',
+    districtFieldLabel: 'City / County',
+    districtFieldHint: 'Enter city or county…',
+    districtPublicTerm: 'city/county',
+    licenseLabel: 'State Bar Number',
+    courtFieldLabel: 'Bar Admissions / Court Admissions',
+    usesBarAdmissions: true,
+    licenseStatuses: [
+      'Active',
+      'Inactive',
+      'Pending Admission',
+      'Suspended',
+      'Retired',
+    ],
+    federalCourts: [
+      'U.S. District Court',
+      'U.S. Court of Appeals',
+      'U.S. Bankruptcy Court',
+      'U.S. Tax Court',
+      'U.S. Court of International Trade',
+      'U.S. Court of Federal Claims',
+      'U.S. Supreme Court',
+    ],
     courts: [
       'State Trial Court',
       'State Appellate Court',
@@ -67,6 +99,10 @@ class LegalTerms {
       'Bankruptcy Court',
       'Immigration Court',
     ],
+    hearingSectionLabel: 'Court Events & Tasks',
+    addHearingLabel: 'Add Court Event',
+    hearingInputHint: 'Court event / case…',
+    hearingNoun: 'court event',
     practiceAreaHint: 'e.g. Personal Injury, Immigration, Family Law',
     practiceAreas: [
       'Criminal Defense',
@@ -120,10 +156,39 @@ class LegalTerms {
   final String mentorFieldLabel;
   final bool mentorRequiredForJunior;
 
+  /// What the second-level location on the Practice Location step is called
+  /// locally: District / City (India) or City / County (US). The public term
+  /// is the lowercase phrasing used in the address-privacy note.
+  final String districtFieldLabel;
+  final String districtFieldHint;
+  final String districtPublicTerm;
+
   /// What the license number field is called locally.
   final String licenseLabel;
 
+  /// Label of the court section on the professional-details form:
+  /// "Primary Practice Court" (India) or "Bar Admissions / Court
+  /// Admissions" (US).
+  final String courtFieldLabel;
+
+  /// US-style bar admissions: instead of a single primary court picker, the
+  /// professional-details form collects one or more state bar admissions
+  /// (state + bar number + license status) plus optional federal court
+  /// admissions.
+  final bool usesBarAdmissions;
+  final List<String> licenseStatuses;
+  final List<String> federalCourts;
+
   final List<String> courts;
+
+  /// What court appearances are called on the My Schedule step:
+  /// "Hearings & Tasks" / "Add Hearing" (India) or
+  /// "Court Events & Tasks" / "Add Court Event" (US).
+  final String hearingSectionLabel;
+  final String addHearingLabel;
+  final String hearingInputHint;
+  final String hearingNoun;
+
   final String practiceAreaHint;
 
   /// The fixed practice-area list for this country. Single source of truth:

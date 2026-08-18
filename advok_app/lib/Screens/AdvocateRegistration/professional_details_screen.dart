@@ -25,6 +25,21 @@ class ProfessionalDetailsScreen extends StatefulWidget {
       _ProfessionalDetailsScreenState();
 }
 
+/// One editable US state bar admission row: State + Bar Number + License
+/// Status. The controller lives here so text survives ListView recycling.
+class _BarAdmissionEntry {
+  final TextEditingController numberController = TextEditingController();
+  String? state;
+  String? licenseStatus;
+
+  bool get complete =>
+      state != null &&
+      numberController.text.trim().isNotEmpty &&
+      licenseStatus != null;
+
+  void dispose() => numberController.dispose();
+}
+
 class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
   // Controllers keep the text alive when the lazy ListView disposes
   // off-screen fields while the user scrolls through the form.
@@ -34,6 +49,10 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
   final TextEditingController _barNumberController = TextEditingController();
   String? _court;
   String? _practiceArea;
+
+  /// US flow: state bar admissions (at least one) + optional federal courts.
+  final List<_BarAdmissionEntry> _barAdmissions = [_BarAdmissionEntry()];
+  final Set<String> _federalCourts = <String>{};
 
   /// Local preview + base64 data URL sent to the backend.
   File? _photoFile;
@@ -50,8 +69,15 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
     _seniorNameController.dispose();
     _emailController.dispose();
     _barNumberController.dispose();
+    for (final entry in _barAdmissions) {
+      entry.dispose();
+    }
     super.dispose();
   }
+
+  /// US collects structured bar admissions instead of a single bar number +
+  /// primary court pair.
+  bool get _usesBarAdmissions => CountryCatalog.terms.usesBarAdmissions;
 
   bool get _isJunior => widget.advocateType == AdvocateType.junior;
 
@@ -65,8 +91,10 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
   bool get _formValid =>
       _fullName.trim().isNotEmpty &&
       _emailValid &&
-      _barNumber.trim().isNotEmpty &&
-      _court != null &&
+      (_usesBarAdmissions
+          ? _barAdmissions.isNotEmpty &&
+              _barAdmissions.every((entry) => entry.complete)
+          : _barNumber.trim().isNotEmpty && _court != null) &&
       (!_mentorRequired || _seniorName.trim().isNotEmpty);
 
   @override
@@ -75,12 +103,33 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
       currentStep: 4,
       continueEnabled: _formValid,
       onContinue: () {
+        final admissions = _usesBarAdmissions
+            ? _barAdmissions
+                .where((entry) => entry.complete)
+                .map(
+                  (entry) => BarAdmission(
+                    state: entry.state!,
+                    barNumber: entry.numberController.text.trim(),
+                    licenseStatus: entry.licenseStatus!,
+                  ),
+                )
+                .toList()
+            : <BarAdmission>[];
         AdvocateOnboardingData.current
           ..fullName = _fullName.trim()
           ..seniorAdvocateName = _isJunior ? _seniorName.trim() : ''
           ..email = _email.trim()
-          ..licenseNumber = _barNumber.trim()
-          ..primaryCourt = _court ?? ''
+          // US: mirror the first state bar admission into the legacy
+          // licenseNumber/primaryCourt fields so older backend/admin views
+          // keep displaying something meaningful.
+          ..licenseNumber = _usesBarAdmissions
+              ? admissions.first.barNumber
+              : _barNumber.trim()
+          ..primaryCourt = _usesBarAdmissions
+              ? '${admissions.first.state} State Bar'
+              : _court ?? ''
+          ..barAdmissions = admissions
+          ..federalCourtAdmissions = _federalCourts.toList()
           ..practiceArea = _practiceArea ?? ''
           ..photo = _photoDataUrl;
         Navigator.of(context).push(
@@ -178,18 +227,34 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
           showCheck: _emailValid,
           keyboardType: TextInputType.emailAddress,
         ),
-        const SizedBox(height: 16),
-        _FieldLabel(CountryCatalog.terms.licenseLabel, required: true),
-        const SizedBox(height: 8),
-        _TextInputField(
-          controller: _barNumberController,
-          onChanged: (_) => setState(() {}),
-          showCheck: _barNumber.trim().isNotEmpty,
-        ),
-        const SizedBox(height: 16),
-        const _FieldLabel('Primary Practice Court', required: true),
-        const SizedBox(height: 8),
-        _buildCourtPicker(),
+        if (_usesBarAdmissions) ...[
+          // US: Bar Admissions / Court Admissions — one or more state bar
+          // entries (State + Bar Number + License Status) + optional
+          // federal court admissions.
+          const SizedBox(height: 16),
+          _FieldLabel(CountryCatalog.terms.courtFieldLabel, required: true),
+          const SizedBox(height: 8),
+          for (var i = 0; i < _barAdmissions.length; i++) ...[
+            _buildBarAdmissionCard(i),
+            const SizedBox(height: 12),
+          ],
+          _buildAddBarAdmissionButton(),
+          const SizedBox(height: 16),
+          _buildFederalCourtsSection(),
+        ] else ...[
+          const SizedBox(height: 16),
+          _FieldLabel(CountryCatalog.terms.licenseLabel, required: true),
+          const SizedBox(height: 8),
+          _TextInputField(
+            controller: _barNumberController,
+            onChanged: (_) => setState(() {}),
+            showCheck: _barNumber.trim().isNotEmpty,
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel(CountryCatalog.terms.courtFieldLabel, required: true),
+          const SizedBox(height: 8),
+          _buildCourtPicker(),
+        ],
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -438,6 +503,207 @@ class _ProfessionalDetailsScreenState extends State<ProfessionalDetailsScreen> {
         options: _courts,
         selected: _court,
         onSelect: (value) => setState(() => _court = value),
+      ),
+    );
+  }
+
+  /// One state bar admission entry: State + Bar Number + License Status.
+  Widget _buildBarAdmissionCard(int index) {
+    final entry = _barAdmissions[index];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: entry.complete ? AppColors.textPrimary : AppColors.borderGrey,
+          width: 1.4,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'State Bar Admission ${index + 1}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  height: 18 / 12,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              if (_barAdmissions.length > 1)
+                InkWell(
+                  onTap: () => setState(() {
+                    _barAdmissions.removeAt(index).dispose();
+                  }),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Text(
+                      'Remove',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 16 / 12,
+                        color: AppColors.textGrey555,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const _FieldLabel('State', required: true),
+          const SizedBox(height: 8),
+          _buildPickerField(
+            value: entry.state,
+            hint: 'Select state…',
+            onTap: () => _showOptionSheet(
+              title: 'State',
+              options: CountryCatalog.selected.states,
+              selected: entry.state,
+              onSelect: (value) => setState(() => entry.state = value),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _FieldLabel(CountryCatalog.terms.licenseLabel, required: true),
+          const SizedBox(height: 8),
+          _TextInputField(
+            controller: entry.numberController,
+            onChanged: (_) => setState(() {}),
+            showCheck: entry.numberController.text.trim().isNotEmpty,
+          ),
+          const SizedBox(height: 12),
+          const _FieldLabel('License Status', required: true),
+          const SizedBox(height: 8),
+          _buildPickerField(
+            value: entry.licenseStatus,
+            hint: 'Select license status…',
+            onTap: () => _showOptionSheet(
+              title: 'License Status',
+              options: CountryCatalog.terms.licenseStatuses,
+              selected: entry.licenseStatus,
+              onSelect: (value) => setState(() => entry.licenseStatus = value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddBarAdmissionButton() {
+    return Material(
+      color: AppColors.fillGrey,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _barAdmissions.add(_BarAdmissionEntry())),
+        child: Container(
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.borderGrey),
+          ),
+          child: const Text(
+            '+ Add Another State Bar',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 19.5 / 13,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Optional multi-select of federal courts the attorney is admitted to.
+  Widget _buildFederalCourtsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const _FieldLabel('Federal Court Admissions'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.progressTrack,
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: const Text(
+                'Optional',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                  letterSpacing: 0.12,
+                  color: AppColors.textGrey,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final court in CountryCatalog.terms.federalCourts)
+              _buildFederalCourtChip(court),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFederalCourtChip(String court) {
+    final selected = _federalCourts.contains(court);
+    return Material(
+      color: selected ? AppColors.fillGrey : AppColors.white,
+      borderRadius: BorderRadius.circular(100),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(100),
+        onTap: () => setState(() {
+          if (!_federalCourts.remove(court)) _federalCourts.add(court);
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(
+              color: selected ? AppColors.textPrimary : AppColors.borderGrey,
+              width: 1.4,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                court,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  height: 18 / 12,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              if (selected) ...[
+                const SizedBox(width: 6),
+                SvgPicture.asset(
+                  'assets/icons/ic_check.svg',
+                  width: 12,
+                  height: 12,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

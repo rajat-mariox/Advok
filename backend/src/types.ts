@@ -9,9 +9,16 @@ export type UserStatus =
   | 'rejected' // admin rejected
   | 'suspended'; // admin suspended the account (any role)
 
+/** One US state bar admission: state + bar number + license status. */
+export interface BarAdmission {
+  state: string;
+  barNumber: string;
+  licenseStatus: string;
+}
+
 export interface AdvocateProfile {
   advocateType: 'junior' | 'senior';
-  /** Profile photo as a base64 data URL. */
+  /** Profile photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
   photo?: string;
   /** US-only classification: "0–2 years" … "20+ years". */
   yearsInPractice?: string;
@@ -33,6 +40,10 @@ export interface AdvocateProfile {
     barRegistrationNumber?: string;
     primaryCourt: string;
     practiceArea: string;
+    /** US-only: one or more state bar admissions. */
+    barAdmissions?: BarAdmission[];
+    /** US-only: optional federal court admissions. */
+    federalCourtAdmissions?: string[];
   };
   schedule: {
     workingDays: string[];
@@ -47,7 +58,7 @@ export interface LawStudentProfile {
   course: string;
   academicYear: string;
   idCardFileName: string;
-  /** Profile photo as a base64 data URL. */
+  /** Profile photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
   photo?: string;
 }
 
@@ -55,7 +66,7 @@ export interface LawStudentProfile {
 export interface ClientProfile {
   fullName?: string;
   email?: string;
-  /** Profile photo as a base64 data URL. */
+  /** Profile photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
   photo?: string;
 }
 
@@ -83,7 +94,7 @@ export interface LawFirmProfile {
   state: string;
   totalLawyers: string;
   lawyers: FirmLawyer[];
-  /** Firm logo/photo as a base64 data URL. */
+  /** Firm logo/photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
   photo?: string;
 }
 
@@ -104,6 +115,10 @@ export interface User {
    * credentials against. */
   country?: string;
   email?: string;
+  /** Google account ID (`sub` claim) for accounts that use Google login. */
+  googleId?: string;
+  /** Apple account ID (`sub` claim) for accounts that use Apple login. */
+  appleId?: string;
   passwordHash?: string;
   name?: string;
   profile?: Profile;
@@ -125,6 +140,34 @@ export interface OtpRecord {
   expiresAt: number;
 }
 
+export type BookingStatus =
+  | 'pending' // waiting for the advocate to accept (office visits)
+  | 'confirmed' // accepted by the advocate, or instantly confirmed types
+  | 'declined' // advocate turned the request down
+  | 'cancelled'; // client cancelled
+
+export type ConsultationKind = 'video_call' | 'phone_call' | 'office_visit';
+
+/** A consultation booked by a client with an advocate. */
+export interface Booking {
+  id: string;
+  clientId: string;
+  advocateId: string;
+  consultationType: ConsultationKind;
+  /** Calendar day of the appointment, 'YYYY-MM-DD'. */
+  date: string;
+  /** Slot label shown to both sides, e.g. '10:00 AM'. */
+  time: string;
+  durationMinutes: number;
+  /** Total shown at checkout (consultation + platform fee + tax). */
+  amount: number;
+  status: BookingStatus;
+  createdAt: string;
+  /** When the advocate accepted/declined. */
+  respondedAt?: string;
+  cancelledAt?: string;
+}
+
 export interface CmsSection {
   title: string;
   body: string;
@@ -144,4 +187,5 @@ export interface DbShape {
   users: User[];
   otps: OtpRecord[];
   cmsPages?: CmsPage[];
+  bookings?: Booking[];
 }

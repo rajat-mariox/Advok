@@ -288,7 +288,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                 ),
                 const SizedBox(height: 2),
                 const Text(
-                  'Legal information, not legal advice',
+                  'Ask ADVOK AI for legal information',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,

@@ -14,6 +14,7 @@ class BookingConfirmedScreen extends StatelessWidget {
     required this.time,
     required this.type,
     required this.amount,
+    this.isPending = false,
   });
 
   final String advocateName;
@@ -21,6 +22,9 @@ class BookingConfirmedScreen extends StatelessWidget {
   final String time;
   final String type;
   final String amount;
+
+  /// True for office visits, which wait for the advocate to accept.
+  final bool isPending;
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +44,10 @@ class BookingConfirmedScreen extends StatelessWidget {
                 children: [
                   _buildBadge(context),
                   const SizedBox(height: 28),
-                  const Text(
-                    'Booking Confirmed!',
+                  Text(
+                    isPending ? 'Request Sent!' : 'Booking Confirmed!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
                       height: 32 / 24,
@@ -53,8 +57,13 @@ class BookingConfirmedScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Your appointment with $advocateName has been '
-                    'scheduled. A confirmation has been sent to your email.',
+                    isPending
+                        ? 'Your office visit request has been sent to '
+                            '$advocateName. You will be notified once they '
+                            'accept it — check My Bookings for updates.'
+                        : 'Your appointment with $advocateName has been '
+                            'scheduled. A confirmation has been sent to your '
+                            'email.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 14,
@@ -123,7 +132,12 @@ class BookingConfirmedScreen extends StatelessWidget {
           _buildDetailRow('Date', date),
           _buildDetailRow('Time', time),
           _buildDetailRow('Type', type),
-          _buildDetailRow('Amount Paid', amount, showDivider: false),
+          if (isPending) _buildDetailRow('Status', 'Awaiting acceptance'),
+          _buildDetailRow(
+            isPending ? 'Amount' : 'Amount Paid',
+            amount,
+            showDivider: false,
+          ),
         ],
       ),
     );

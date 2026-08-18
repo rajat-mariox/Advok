@@ -105,9 +105,10 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Your location helps clients find advocates in their area.',
-          style: TextStyle(
+        Text(
+          'Your location helps clients find '
+          '${CountryCatalog.terms.lawyerPlural.toLowerCase()} in their area.',
+          style: const TextStyle(
             fontSize: 14,
             height: 20 / 14,
             letterSpacing: -0.15,
@@ -119,7 +120,7 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
         const SizedBox(height: 8),
         _buildStatePicker(),
         const SizedBox(height: 16),
-        const _FieldLabel('District / City', required: true),
+        _FieldLabel(CountryCatalog.terms.districtFieldLabel, required: true),
         const SizedBox(height: 8),
         _buildDistrictField(),
         if (_districtFocus.hasFocus && _districtSuggestions.isNotEmpty) ...[
@@ -282,7 +283,7 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
     final hint = _state == null
         ? 'Select ${_stateLabel.toLowerCase()} first…'
         : all.isEmpty
-            ? 'Enter district or city…'
+            ? CountryCatalog.terms.districtFieldHint
             : 'e.g. ${all.take(2).join(', ')}…';
     return Container(
       height: 52,
@@ -456,10 +457,11 @@ class _PracticeLocationScreenState extends State<PracticeLocationScreen> {
             height: 16,
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Your precise address is never shared publicly. Only your city/district is visible to clients.',
-              style: TextStyle(
+              'Your precise address is never shared publicly. Only your '
+              '${CountryCatalog.terms.districtPublicTerm} is visible to clients.',
+              style: const TextStyle(
                 fontSize: 12,
                 height: 19.5 / 12,
                 color: AppColors.textGrey555,

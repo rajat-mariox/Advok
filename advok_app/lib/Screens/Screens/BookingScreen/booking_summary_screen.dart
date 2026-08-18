@@ -3,27 +3,94 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 import 'booking_confirmed_screen.dart';
 import 'consultation_type_screen.dart';
 
-class BookingSummaryScreen extends StatelessWidget {
+class BookingSummaryScreen extends StatefulWidget {
   const BookingSummaryScreen({
     super.key,
     required this.advocate,
     required this.consultationType,
+    required this.date,
     required this.dateLabel,
     required this.timeLabel,
   });
 
   final Advocate advocate;
   final ConsultationType consultationType;
+
+  /// The appointment day picked on the previous step.
+  final DateTime date;
   final String dateLabel;
   final String timeLabel;
 
+  @override
+  State<BookingSummaryScreen> createState() => _BookingSummaryScreenState();
+}
+
+class _BookingSummaryScreenState extends State<BookingSummaryScreen> {
   static const double _platformFee = 5.0;
   static const double _taxRate = 0.085;
+
+  bool _submitting = false;
+
+  Advocate get advocate => widget.advocate;
+
+  ConsultationType get consultationType => widget.consultationType;
+
+  String get dateLabel => widget.dateLabel;
+
+  String get timeLabel => widget.timeLabel;
+
+  /// API value for the selected consultation format.
+  String get _consultationKind => switch (consultationType.title) {
+        'Office Visit' => 'office_visit',
+        'Phone Call' => 'phone_call',
+        _ => 'video_call',
+      };
+
+  String get _isoDate {
+    final d = widget.date;
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _confirmBooking() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final booking = await ApiService.createBooking(
+        advocateId: advocate.id,
+        consultationType: _consultationKind,
+        date: _isoDate,
+        time: timeLabel,
+        amount: double.parse(_total.toStringAsFixed(2)),
+      );
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookingConfirmedScreen(
+            advocateName: advocate.name,
+            date: dateLabel,
+            time: timeLabel,
+            type: consultationType.title,
+            amount: _money(_total),
+            isPending: booking['status'] == 'pending',
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   double get _consultationFee =>
       double.parse(consultationType.price.replaceAll(RegExp(r'[^\d.]'), ''));
@@ -92,39 +159,38 @@ class BookingSummaryScreen extends StatelessWidget {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
-                      onTap: () {
-                        // TODO: Process the payment before confirming.
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => BookingConfirmedScreen(
-                              advocateName: advocate.name,
-                              date: dateLabel,
-                              time: '$timeLabel EST',
-                              type: consultationType.title,
-                              amount: _money(_total),
-                            ),
-                          ),
-                        );
-                      },
+                      // TODO: Process the payment before confirming.
+                      onTap: _submitting ? null : _confirmBooking,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SvgPicture.asset(
-                            'assets/icons/ic_check_circle_white.svg',
-                            width: 18,
-                            height: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Confirm & Pay ${_money(_total)}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.31,
-                              color: AppColors.white,
-                            ),
-                          ),
-                        ],
+                        children: _submitting
+                            ? const [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ]
+                            : [
+                                SvgPicture.asset(
+                                  'assets/icons/ic_check_circle_white.svg',
+                                  width: 18,
+                                  height: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Confirm & Pay ${_money(_total)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: -0.31,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ],
                       ),
                     ),
                   ),

@@ -5,6 +5,7 @@ import '../../../Utils/AppColors/app_colors.dart';
 import '../AdvocateCasesScreen/advocate_cases_screen.dart'
     show CaseBadge, advocateCases;
 import '../AdvocateCasesScreen/case_details_screen.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart' show InitialsAvatar;
 import 'client_directory.dart';
 
 class AdvocateClientsScreen extends StatefulWidget {
@@ -257,7 +258,9 @@ class _ClientCard extends StatelessWidget {
                   border: Border.all(color: AppColors.borderGrey, width: 1.4),
                 ),
                 child: ClipOval(
-                  child: Image.asset(client.avatar, fit: BoxFit.cover),
+                  child: client.avatar.isEmpty
+                      ? InitialsAvatar(name: client.name, size: 52)
+                      : Image.asset(client.avatar, fit: BoxFit.cover),
                 ),
               ),
               const SizedBox(width: 16),

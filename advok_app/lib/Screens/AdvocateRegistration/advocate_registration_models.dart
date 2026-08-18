@@ -10,6 +10,26 @@ extension AdvocateTypeLabel on AdvocateType {
       : CountryCatalog.terms.seniorTitle;
 }
 
+/// One US state bar admission: which state bar, the bar number issued by it,
+/// and the current license status with that bar.
+class BarAdmission {
+  BarAdmission({
+    required this.state,
+    required this.barNumber,
+    required this.licenseStatus,
+  });
+
+  final String state;
+  final String barNumber;
+  final String licenseStatus;
+
+  Map<String, String> toJson() => {
+        'state': state,
+        'barNumber': barNumber,
+        'licenseStatus': licenseStatus,
+      };
+}
+
 /// Aggregates the data collected across the 5 advocate registration steps so
 /// the final step can submit everything to the backend in one payload.
 class AdvocateOnboardingData {
@@ -38,6 +58,11 @@ class AdvocateOnboardingData {
   String licenseNumber = '';
   String primaryCourt = '';
   String practiceArea = '';
+
+  /// US-only: state bar admissions (state + bar number + license status) and
+  /// optional federal court admissions. Empty for other countries.
+  List<BarAdmission> barAdmissions = [];
+  List<String> federalCourtAdmissions = [];
   List<String> workingDays = [];
   String startTime = '';
   String endTime = '';
@@ -57,6 +82,8 @@ class AdvocateOnboardingData {
     licenseNumber = '';
     primaryCourt = '';
     practiceArea = '';
+    barAdmissions = [];
+    federalCourtAdmissions = [];
     workingDays = [];
     startTime = '';
     endTime = '';
@@ -84,6 +111,10 @@ class AdvocateOnboardingData {
         'licenseNumber': licenseNumber,
         'primaryCourt': primaryCourt,
         'practiceArea': practiceArea.isEmpty ? 'General Practice' : practiceArea,
+        if (barAdmissions.isNotEmpty)
+          'barAdmissions': barAdmissions.map((a) => a.toJson()).toList(),
+        if (federalCourtAdmissions.isNotEmpty)
+          'federalCourtAdmissions': federalCourtAdmissions,
       },
       'schedule': {
         'workingDays': workingDays,

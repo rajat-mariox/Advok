@@ -9,29 +9,53 @@ import 'booking_summary_screen.dart';
 import 'consultation_type_screen.dart';
 
 class _DateOption {
-  // ignore: unused_element_parameter — set by API data once slots are live.
-  const _DateOption(this.day, this.date, {this.available = true});
+  const _DateOption(this.date, {required this.available});
 
-  final String day;
-  final String date;
+  final DateTime date;
   final bool available;
 
-  static const Map<String, String> _fullDayNames = {
-    'Mon': 'Monday',
-    'Tue': 'Tuesday',
-    'Wed': 'Wednesday',
-    'Thu': 'Thursday',
-    'Fri': 'Friday',
-    'Sat': 'Saturday',
-    'Sun': 'Sunday',
-  };
+  static const List<String> dayLabels = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
 
-  String get fullLabel => '${_fullDayNames[day]}, July $date, 2025';
+  static const List<String> _fullDayNames = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
+  static const List<String> _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  String get day => dayLabels[date.weekday - 1];
+
+  String get dayNumber => '${date.day}';
+
+  String get fullLabel => '${_fullDayNames[date.weekday - 1]}, '
+      '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
 }
-
-const List<_DateOption> _dates = [];
-
-const List<String> _slots = [];
 
 class SelectDateTimeScreen extends StatefulWidget {
   const SelectDateTimeScreen({
@@ -48,8 +72,55 @@ class SelectDateTimeScreen extends StatefulWidget {
 }
 
 class _SelectDateTimeScreenState extends State<SelectDateTimeScreen> {
-  int _selectedDate = 0;
+  late final List<_DateOption> _dates = _buildDates();
+  late final List<String> _slots = _buildSlots();
+  late int _selectedDate =
+      _dates.indexWhere((d) => d.available).clamp(0, 1 << 30);
   int? _selectedSlot;
+
+  /// The next two weeks, marking the advocate's working days as bookable.
+  /// Empty when the advocate has no schedule, which shows the empty state.
+  List<_DateOption> _buildDates() {
+    final working = widget.advocate.workingDays.toSet();
+    if (working.isEmpty) return const [];
+    final today = DateTime.now();
+    return [
+      for (int i = 1; i <= 14; i++)
+        _DateOption(
+          DateTime(today.year, today.month, today.day + i),
+          available: working
+              .contains(_DateOption.dayLabels[(today.weekday - 1 + i) % 7]),
+        ),
+    ];
+  }
+
+  /// Hourly slots between the advocate's office hours ('HH:mm' 24h strings),
+  /// e.g. 09:00–18:00 becomes 9:00 AM … 5:00 PM.
+  List<String> _buildSlots() {
+    final start = _parseMinutes(widget.advocate.startTime);
+    final end = _parseMinutes(widget.advocate.endTime);
+    if (start == null || end == null || start >= end) return const [];
+    return [
+      for (int m = start; m + 60 <= end; m += 60) _formatSlot(m),
+    ];
+  }
+
+  static int? _parseMinutes(String time) {
+    final parts = time.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final min = int.tryParse(parts[1]);
+    if (h == null || min == null) return null;
+    return h * 60 + min;
+  }
+
+  static String _formatSlot(int minutes) {
+    final h24 = minutes ~/ 60;
+    final min = minutes % 60;
+    final period = h24 >= 12 ? 'PM' : 'AM';
+    final h12 = h24 % 12 == 0 ? 12 : h24 % 12;
+    return '$h12:${min.toString().padLeft(2, '0')} $period';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +323,7 @@ class _SelectDateTimeScreenState extends State<SelectDateTimeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      date.date,
+                      date.dayNumber,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -348,6 +419,7 @@ class _SelectDateTimeScreenState extends State<SelectDateTimeScreen> {
   Widget _buildContinueButton() {
     final enabled = _selectedSlot != null &&
         _selectedDate < _dates.length &&
+        _dates[_selectedDate].available &&
         _selectedSlot! < _slots.length;
     return Opacity(
       opacity: enabled ? 1 : 0.4,
@@ -374,6 +446,7 @@ class _SelectDateTimeScreenState extends State<SelectDateTimeScreen> {
                           builder: (_) => BookingSummaryScreen(
                             advocate: widget.advocate,
                             consultationType: widget.consultationType,
+                            date: _dates[_selectedDate].date,
                             dateLabel: _dates[_selectedDate].fullLabel,
                             timeLabel: _slots[_selectedSlot!],
                           ),
