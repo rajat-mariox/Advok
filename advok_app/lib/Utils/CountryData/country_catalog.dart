@@ -32,6 +32,10 @@ class LegalTerms {
       'Consumer Court',
       'Tribunal',
     ],
+    this.hearingSectionLabel = 'Hearings & Tasks',
+    this.addHearingLabel = 'Add Hearing',
+    this.hearingInputHint = 'Hearing case / court…',
+    this.hearingNoun = 'hearing',
     this.practiceAreaHint = 'e.g. Civil, Criminal, Family, Property',
     this.practiceAreas = const [
       'Criminal Law',
@@ -95,6 +99,10 @@ class LegalTerms {
       'Bankruptcy Court',
       'Immigration Court',
     ],
+    hearingSectionLabel: 'Court Events & Tasks',
+    addHearingLabel: 'Add Court Event',
+    hearingInputHint: 'Court event / case…',
+    hearingNoun: 'court event',
     practiceAreaHint: 'e.g. Personal Injury, Immigration, Family Law',
     practiceAreas: [
       'Criminal Defense',
@@ -172,6 +180,15 @@ class LegalTerms {
   final List<String> federalCourts;
 
   final List<String> courts;
+
+  /// What court appearances are called on the My Schedule step:
+  /// "Hearings & Tasks" / "Add Hearing" (India) or
+  /// "Court Events & Tasks" / "Add Court Event" (US).
+  final String hearingSectionLabel;
+  final String addHearingLabel;
+  final String hearingInputHint;
+  final String hearingNoun;
+
   final String practiceAreaHint;
 
   /// The fixed practice-area list for this country. Single source of truth:

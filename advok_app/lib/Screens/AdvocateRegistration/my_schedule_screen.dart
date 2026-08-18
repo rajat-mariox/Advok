@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import 'advocate_registration_models.dart';
 import 'advocate_step_scaffold.dart';
 import 'advocate_verification_submitted_screen.dart';
@@ -155,12 +156,14 @@ class _MyScheduleScreenState extends State<MyScheduleScreen> {
           ],
         ),
         const SizedBox(height: 24),
-        const _SectionLabel('Hearings & Tasks'),
+        // US: "Court Events & Tasks" / "Add Court Event"; India keeps
+        // "Hearings & Tasks" / "Add Hearing".
+        _SectionLabel(CountryCatalog.terms.hearingSectionLabel),
         const SizedBox(height: 12),
         if (_showHearingInput)
           _AddEntryRow(
             controller: _hearingController,
-            hintText: 'Hearing case / court…',
+            hintText: CountryCatalog.terms.hearingInputHint,
             onAdd: () {
               final text = _hearingController.text.trim();
               if (text.isEmpty) return;
@@ -173,7 +176,7 @@ class _MyScheduleScreenState extends State<MyScheduleScreen> {
         else
           _DashedButton(
             icon: 'assets/icons/ic_plus.svg',
-            label: 'Add Hearing',
+            label: CountryCatalog.terms.addHearingLabel,
             labelColor: AppColors.textPrimary,
             onTap: () => setState(() => _showHearingInput = true),
           ),
@@ -311,7 +314,8 @@ class _MyScheduleScreenState extends State<MyScheduleScreen> {
           const SizedBox(height: 8),
           Text(
             '${_format(_startTime)} – ${_format(_endTime)} · '
-            '${_hearings.length} hearing${_hearings.length == 1 ? '' : 's'} · '
+            '${_hearings.length} ${CountryCatalog.terms.hearingNoun}'
+            '${_hearings.length == 1 ? '' : 's'} · '
             '${_tasks.length} task${_tasks.length == 1 ? '' : 's'}',
             style: const TextStyle(
               fontSize: 12,
