@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../../../Utils/CountryData/country_catalog.dart';
 import '../AdvocateCasesScreen/advocate_cases_screen.dart';
 import '../AdvocateCasesScreen/case_details_screen.dart';
 import '../AdvocateClientsScreen/client_directory.dart';
@@ -46,8 +47,40 @@ class _Hearing {
   final String court;
 }
 
-/// Upcoming hearings. Empty until hearings are backed by the API.
-const List<_Hearing> _hearings = [];
+/// A-08 sample rows for the US market: actual U.S. courts with their
+/// jurisdiction (per the design spec, replacing the earlier Indian-style
+/// "District/Sessions/High Court, NY" placeholders). Shown until hearings
+/// are backed by the API.
+const List<_Hearing> _usSampleHearings = [
+  _Hearing(
+    date: 'Aug 22',
+    time: '9:30 AM',
+    caseNumber: '1:26-cv-04812',
+    matter: 'Contract Dispute',
+    court: 'U.S. District Court, Southern District of New York',
+  ),
+  _Hearing(
+    date: 'Aug 26',
+    time: '11:00 AM',
+    caseNumber: '155602/2026',
+    matter: 'Commercial Lease Dispute',
+    court: 'New York Supreme Court, New York County',
+  ),
+  _Hearing(
+    date: 'Sep 3',
+    time: '2:15 PM',
+    caseNumber: 'F-08841-26',
+    matter: 'Custody Modification',
+    court: 'New York Family Court, Kings County',
+  ),
+];
+
+/// Upcoming hearings. US shows the sample court events above; other
+/// countries stay empty until hearings are backed by the API.
+List<_Hearing> get _hearings =>
+    CountryCatalog.selected.name == 'United States'
+        ? _usSampleHearings
+        : const [];
 
 /// A pending consultation request (an office visit waiting for the advocate
 /// to accept or decline), built from the backend's /bookings response.
