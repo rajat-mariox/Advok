@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { saveDb } from '../db';
 import { requireRole, type AuthedRequest } from '../middleware/auth';
+import { storePhoto } from '../storage';
 import type { AdvocateProfile, LawFirmProfile, LawStudentProfile } from '../types';
 
 const router = Router();
@@ -26,11 +27,19 @@ function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile
 }
 
 /** Advocate onboarding — the aggregated data of all 5 registration steps. */
-router.post('/advocate', requireRole('advocate'), (req: AuthedRequest, res) => {
+router.post('/advocate', requireRole('advocate'), async (req: AuthedRequest, res) => {
   const body = req.body ?? {};
   // Older app builds sent the license as `barRegistrationNumber`.
   if (body.professional && body.professional.licenseNumber == null) {
     body.professional.licenseNumber = body.professional.barRegistrationNumber;
+  }
+  if (typeof body.photo === 'string' && body.photo) {
+    try {
+      body.photo = await storePhoto(body.photo, `photos/${req.user!.id}`);
+    } catch (err) {
+      console.error('Photo upload to S3 failed:', err);
+      return res.status(502).json({ error: 'Photo upload failed, try again' });
+    }
   }
   const missing = missingFields(body, [
     'advocateType',

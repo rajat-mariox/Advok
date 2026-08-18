@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '../../CommonWidgets/circle_back_button.dart';
 import '../../CommonWidgets/social_login_section.dart';
 import '../../Services/api_service.dart';
+import '../../Services/apple_auth_service.dart';
+import '../../Services/google_auth_service.dart';
 import '../../Services/post_login_navigator.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/Responsive/responsive.dart';
@@ -77,6 +79,30 @@ class _OtpScreenState extends State<OtpScreen> {
       setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _verifying = false);
+    }
+  }
+
+  Future<void> _googleSignIn() async {
+    try {
+      final loggedIn =
+          await GoogleAuthService.signIn(country: widget.country.name);
+      if (!loggedIn || !mounted) return;
+      PostLoginNavigator.navigateAfterLogin(context);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    }
+  }
+
+  Future<void> _appleSignIn() async {
+    try {
+      final loggedIn =
+          await AppleAuthService.signIn(country: widget.country.name);
+      if (!loggedIn || !mounted) return;
+      PostLoginNavigator.navigateAfterLogin(context);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     }
   }
 
@@ -221,12 +247,8 @@ class _OtpScreenState extends State<OtpScreen> {
                 _buildChangeNumber(),
                 SizedBox(height: context.hp(0.10)),
                 SocialLoginSection(
-                  onGoogleTap: () {
-                    // TODO: Google sign-in.
-                  },
-                  onAppleTap: () {
-                    // TODO: Apple sign-in.
-                  },
+                  onGoogleTap: _googleSignIn,
+                  onAppleTap: _appleSignIn,
                 ),
               ],
             ),

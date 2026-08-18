@@ -16,6 +16,9 @@ class LegalTerms {
     this.seniorNote = 'Designated by the High Court or Supreme Court',
     this.mentorFieldLabel = 'Senior Advocate Name',
     this.mentorRequiredForJunior = true,
+    this.districtFieldLabel = 'District / City',
+    this.districtFieldHint = 'Enter district or city…',
+    this.districtPublicTerm = 'city/district',
     this.licenseLabel = 'Bar Registration Number',
     this.courts = const [
       'Supreme Court',
@@ -56,6 +59,9 @@ class LegalTerms {
     seniorNote: 'Solo practitioner, partner, or of counsel',
     mentorFieldLabel: 'Supervising Attorney Name',
     mentorRequiredForJunior: false,
+    districtFieldLabel: 'City / County',
+    districtFieldHint: 'Enter city or county…',
+    districtPublicTerm: 'city/county',
     licenseLabel: 'State Bar License',
     courts: [
       'State Trial Court',
@@ -119,6 +125,13 @@ class LegalTerms {
   /// must name their senior advocate; in the US it is optional.
   final String mentorFieldLabel;
   final bool mentorRequiredForJunior;
+
+  /// What the second-level location on the Practice Location step is called
+  /// locally: District / City (India) or City / County (US). The public term
+  /// is the lowercase phrasing used in the address-privacy note.
+  final String districtFieldLabel;
+  final String districtFieldHint;
+  final String districtPublicTerm;
 
   /// What the license number field is called locally.
   final String licenseLabel;

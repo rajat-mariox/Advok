@@ -1,47 +1,103 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart';
 
 class _Booking {
   const _Booking({
+    required this.id,
     required this.name,
     required this.type,
     required this.status,
     required this.statusColor,
     required this.dateTime,
     required this.price,
-    required this.image,
-    // The flags below are set by API data once bookings are live.
-    // ignore: unused_element_parameter
+    required this.photoBytes,
+    required this.past,
+    required this.canCancel,
     this.canJoinCall = false,
-    // ignore: unused_element_parameter
-    this.past = false,
-    // ignore: unused_element_parameter
-    this.hasActions = true,
   });
 
+  static const List<String> _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  /// Builds a card model from the backend's /bookings response.
+  factory _Booking.fromApi(Map<String, dynamic> json) {
+    final status = json['status'] as String? ?? 'pending';
+    final kind = json['consultationType'] as String? ?? 'video_call';
+    final date = DateTime.tryParse(json['date'] as String? ?? '');
+    final time = json['time'] as String? ?? '';
+    final amount = (json['amount'] as num?)?.toDouble() ?? 0;
+
+    final today = DateTime.now();
+    final dateIsPast = date != null &&
+        date.isBefore(DateTime(today.year, today.month, today.day));
+    final upcoming =
+        (status == 'pending' || status == 'confirmed') && !dateIsPast;
+
+    final (label, color) = switch (status) {
+      'pending' => ('Pending', const Color(0xFFB07A00)),
+      'confirmed' => ('Confirmed', const Color(0xFF1E7A46)),
+      'declined' => ('Declined', const Color(0xFF9A3B3B)),
+      'cancelled' => ('Cancelled', AppColors.textGrey555),
+      _ => (status, AppColors.textGrey555),
+    };
+
+    return _Booking(
+      id: json['id'] as String? ?? '',
+      name: json['advocateName'] as String? ?? 'Advocate',
+      type: switch (kind) {
+        'office_visit' => 'Office Visit · In-person',
+        'phone_call' => 'Phone Call',
+        _ => 'Video Call',
+      },
+      status: label,
+      statusColor: color,
+      dateTime: date == null
+          ? time
+          : '${_months[date.month - 1]} ${date.day} · $time',
+      price: '\$${amount.toStringAsFixed(2)}',
+      photoBytes: decodePhotoDataUrl(json['advocatePhoto'] as String?),
+      past: !upcoming,
+      canCancel: upcoming,
+      canJoinCall: false,
+    );
+  }
+
+  final String id;
   final String name;
   final String type;
   final String status;
   final Color statusColor;
   final String dateTime;
   final String price;
-  final String image;
+  final Uint8List? photoBytes;
   final bool canJoinCall;
 
-  /// Past bookings show View Notes / Rebook instead of Message / Cancel.
+  /// Declined/cancelled or already-passed bookings live in the Past tab.
   final bool past;
 
-  /// Cancelled bookings show no action row at all.
-  final bool hasActions;
+  /// Upcoming pending/confirmed bookings can still be cancelled.
+  final bool canCancel;
 }
-
-const List<_Booking> _upcomingBookings = [];
-
-const List<_Booking> _pastBookings = [];
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key, this.onBack});
@@ -56,9 +112,74 @@ class BookingsScreen extends StatefulWidget {
 class _BookingsScreenState extends State<BookingsScreen> {
   int _selectedTab = 0;
 
+  List<_Booking> _bookings = [];
+  bool _loading = true;
+  String _loadError = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await ApiService.fetchBookings();
+      if (!mounted) return;
+      setState(() {
+        _bookings = result.map(_Booking.fromApi).toList();
+        _loadError = '';
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _cancel(_Booking booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        title: const Text('Cancel booking?'),
+        content: Text(
+          'Your ${booking.type.split(' · ').first.toLowerCase()} with '
+          '${booking.name} on ${booking.dateTime} will be cancelled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Cancel booking'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.cancelBooking(booking.id);
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bookings = _selectedTab == 0 ? _upcomingBookings : _pastBookings;
+    final bookings = [
+      for (final b in _bookings)
+        if (b.past == (_selectedTab == 1)) b,
+    ];
     return Column(
       children: [
         Container(
@@ -95,15 +216,26 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
         ),
         Expanded(
-          child: bookings.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  itemCount: bookings.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
-                  itemBuilder: (context, index) =>
-                      _BookingCard(booking: bookings[index]),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: bookings.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [_buildEmptyState()],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                          itemCount: bookings.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) => _BookingCard(
+                            booking: bookings[index],
+                            onCancel: () => _cancel(bookings[index]),
+                          ),
+                        ),
                 ),
         ),
       ],
@@ -131,9 +263,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'No bookings yet',
-            style: TextStyle(
+          Text(
+            _selectedTab == 0 ? 'No upcoming bookings' : 'No past bookings',
+            style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
@@ -141,7 +273,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            '${CountryCatalog.terms.lawyerPlural} you book will appear here.',
+            _loadError.isNotEmpty
+                ? _loadError
+                : '${CountryCatalog.terms.lawyerPlural} you book will appear '
+                    'here.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 12.5,
@@ -182,9 +317,10 @@ class _BookingsScreenState extends State<BookingsScreen> {
 }
 
 class _BookingCard extends StatelessWidget {
-  const _BookingCard({required this.booking});
+  const _BookingCard({required this.booking, required this.onCancel});
 
   final _Booking booking;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -205,12 +341,14 @@ class _BookingCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.asset(
-                    booking.image,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                  ),
+                  child: booking.photoBytes != null
+                      ? Image.memory(
+                          booking.photoBytes!,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                        )
+                      : InitialsAvatar(name: booking.name, size: 48),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -300,92 +438,56 @@ class _BookingCard extends StatelessWidget {
               ],
             ),
           ),
-          if (booking.hasActions)
+          if (booking.canCancel)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Row(
-                children: booking.past
-                    ? [
-                        Expanded(
-                          child: _ActionPill(
-                            label: 'View Notes',
-                            background: AppColors.progressTrack,
-                            borderColor: AppColors.borderGrey,
-                            textColor: AppColors.textGrey555,
-                            onTap: () {
-                              // TODO: Show the consultation notes.
-                            },
-                          ),
+                children: [
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'Message',
+                      background: AppColors.progressTrack,
+                      borderColor: AppColors.borderGrey,
+                      textColor: AppColors.textPrimary,
+                      onTap: () {
+                        // TODO: Open the conversation with this advocate.
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'Cancel',
+                      background:
+                          const Color(0xFF1A1A1A).withValues(alpha: 0.09),
+                      borderColor:
+                          const Color(0xFF1A1A1A).withValues(alpha: 0.19),
+                      textColor: const Color(0xFF1A1A1A),
+                      onTap: onCancel,
+                    ),
+                  ),
+                  if (booking.canJoinCall) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ActionPill(
+                        label: 'Join Call',
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.textPrimary,
+                            AppColors.gradientDarkEnd,
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ActionPill(
-                            label: 'Rebook',
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppColors.textPrimary,
-                                AppColors.gradientDarkEnd,
-                              ],
-                            ),
-                            textColor: AppColors.white,
-                            bold: true,
-                            onTap: () {
-                              // TODO: Restart the booking flow.
-                            },
-                          ),
-                        ),
-                      ]
-                    : [
-                        Expanded(
-                          child: _ActionPill(
-                            label: 'Message',
-                            background: AppColors.progressTrack,
-                            borderColor: AppColors.borderGrey,
-                            textColor: AppColors.textPrimary,
-                            onTap: () {
-                              // TODO: Open the conversation with this
-                              // advocate.
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ActionPill(
-                            label: 'Cancel',
-                            background: const Color(0xFF1A1A1A)
-                                .withValues(alpha: 0.09),
-                            borderColor: const Color(0xFF1A1A1A)
-                                .withValues(alpha: 0.19),
-                            textColor: const Color(0xFF1A1A1A),
-                            onTap: () {
-                              // TODO: Cancel this booking.
-                            },
-                          ),
-                        ),
-                        if (booking.canJoinCall) ...[
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _ActionPill(
-                              label: 'Join Call',
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  AppColors.textPrimary,
-                                  AppColors.gradientDarkEnd,
-                                ],
-                              ),
-                              textColor: AppColors.white,
-                              bold: true,
-                              onTap: () {
-                                // TODO: Join the video call.
-                              },
-                            ),
-                          ),
-                        ],
-                      ],
+                        textColor: AppColors.white,
+                        bold: true,
+                        onTap: () {
+                          // TODO: Join the video call.
+                        },
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
         ],

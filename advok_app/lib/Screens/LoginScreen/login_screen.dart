@@ -6,6 +6,9 @@ import '../../CommonWidgets/circle_back_button.dart';
 import '../../CommonWidgets/phone_number_limit_formatter.dart';
 import '../../CommonWidgets/social_login_section.dart';
 import '../../Services/api_service.dart';
+import '../../Services/apple_auth_service.dart';
+import '../../Services/google_auth_service.dart';
+import '../../Services/post_login_navigator.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../OtpScreen/otp_screen.dart';
@@ -47,6 +50,34 @@ class _LoginScreenState extends State<LoginScreen> {
       _phoneController.text.trim().isNotEmpty && !_phoneValid;
 
   bool get _canSendOtp => _phoneValid && !_sending;
+
+  Future<void> _googleSignIn() async {
+    try {
+      final loggedIn =
+          await GoogleAuthService.signIn(country: widget.country.name);
+      if (!loggedIn || !mounted) return;
+      PostLoginNavigator.navigateAfterLogin(context);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
+  Future<void> _appleSignIn() async {
+    try {
+      final loggedIn =
+          await AppleAuthService.signIn(country: widget.country.name);
+      if (!loggedIn || !mounted) return;
+      PostLoginNavigator.navigateAfterLogin(context);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
 
   Future<void> _sendOtp() async {
     final phone = _phoneController.text.trim();
@@ -195,12 +226,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 _buildSendOtpButton(),
                 const SizedBox(height: 24),
                 SocialLoginSection(
-                  onGoogleTap: () {
-                    // TODO: Google sign-in.
-                  },
-                  onAppleTap: () {
-                    // TODO: Apple sign-in.
-                  },
+                  onGoogleTap: _googleSignIn,
+                  onAppleTap: _appleSignIn,
                 ),
               ],
             ),

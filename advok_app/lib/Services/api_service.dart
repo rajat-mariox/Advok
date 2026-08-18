@@ -10,7 +10,7 @@ import '../Utils/CountryData/country_catalog.dart';
 const String _envApiUrl = String.fromEnvironment('ADVOK_API_URL');
 
 /// If your computer's WiFi IP changes, update this (check with `ipconfig`).
-const String _devMachineLanIp = '192.168.1.46';
+const String _devMachineLanIp = '192.168.1.37';
 
 /// Backend URLs tried in order on first use, so a plain `flutter run` works
 /// everywhere without flags:
@@ -217,6 +217,37 @@ class ApiService {
     _syncCountry();
   }
 
+  /// Logs in with a Google ID token (from Google Sign-In). The backend
+  /// verifies the token, finds or creates the account and returns the same
+  /// token/user payload as verify-otp.
+  static Future<void> loginWithGoogle(String idToken, {String? country}) async {
+    final data = await _request('POST', '/auth/google', body: {
+      'idToken': idToken,
+      'country': ?country,
+    });
+    Session.token = data['token'] as String?;
+    Session.user = data['user'] as Map<String, dynamic>?;
+    _syncCountry();
+  }
+
+  /// Logs in with an Apple identity token (from Sign in with Apple).
+  /// [fullName] is only available on the very first Apple sign-in, so it is
+  /// forwarded for the backend to store right away.
+  static Future<void> loginWithApple(
+    String identityToken, {
+    String? fullName,
+    String? country,
+  }) async {
+    final data = await _request('POST', '/auth/apple', body: {
+      'identityToken': identityToken,
+      'fullName': ?fullName,
+      'country': ?country,
+    });
+    Session.token = data['token'] as String?;
+    Session.user = data['user'] as Map<String, dynamic>?;
+    _syncCountry();
+  }
+
   /// Keeps the app's country flow in line with the country this account was
   /// created with, so a returning user gets the same (India/US) experience
   /// regardless of the tile tapped on the Select Country screen.
@@ -274,6 +305,52 @@ class ApiService {
     final data = await _request('GET', '/advocates');
     final list = data['advocates'] as List<dynamic>? ?? [];
     return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Books a consultation with an advocate. Office visits come back with
+  /// status 'pending' (the advocate has to accept); video/phone calls are
+  /// confirmed immediately. Returns the created booking.
+  static Future<Map<String, dynamic>> createBooking({
+    required String advocateId,
+    required String consultationType,
+    required String date,
+    required String time,
+    required double amount,
+    int durationMinutes = 60,
+  }) async {
+    final data = await _request('POST', '/bookings', body: {
+      'advocateId': advocateId,
+      'consultationType': consultationType,
+      'date': date,
+      'time': time,
+      'amount': amount,
+      'durationMinutes': durationMinutes,
+    });
+    return data['booking'] as Map<String, dynamic>;
+  }
+
+  /// The user's bookings — a client sees the ones they made, an advocate the
+  /// ones made with them. Newest first.
+  static Future<List<Map<String, dynamic>>> fetchBookings() async {
+    final data = await _request('GET', '/bookings');
+    final list = data['bookings'] as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Advocate accepts or declines a pending visit request.
+  static Future<void> respondToBooking(
+    String bookingId, {
+    required bool accept,
+  }) async {
+    await _request(
+      'POST',
+      '/bookings/$bookingId/${accept ? 'accept' : 'decline'}',
+    );
+  }
+
+  /// Client cancels an upcoming booking.
+  static Future<void> cancelBooking(String bookingId) async {
+    await _request('POST', '/bookings/$bookingId/cancel');
   }
 
   /// Saves the Edit Profile screen for any role (fields depend on the role,

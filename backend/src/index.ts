@@ -5,6 +5,7 @@ import { getDb } from './db';
 import adminRouter from './routes/admin';
 import advocatesRouter from './routes/advocates';
 import authRouter from './routes/auth';
+import bookingsRouter from './routes/bookings';
 import cmsRouter from './routes/cms';
 import onboardingRouter from './routes/onboarding';
 import profileRouter from './routes/profile';
@@ -32,6 +33,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/advocates', advocatesRouter);
+app.use('/api/bookings', bookingsRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/onboarding', onboardingRouter);
 app.use('/api/admin', adminRouter);

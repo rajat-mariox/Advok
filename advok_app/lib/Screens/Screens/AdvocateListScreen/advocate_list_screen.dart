@@ -34,10 +34,14 @@ class Advocate {
     required this.price,
     required this.availability,
     required this.image,
+    this.id = '',
     this.rating,
     this.tier = 'junior',
     this.role = '',
     this.photoBytes,
+    this.workingDays = const [],
+    this.startTime = '',
+    this.endTime = '',
   });
 
   /// Builds a card model from the backend's /advocates response.
@@ -51,6 +55,7 @@ class Advocate {
         .where((s) => s.isNotEmpty)
         .join(', ');
     return Advocate(
+      id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Advocate',
       specialty: practiceArea.isEmpty ? 'General Practice' : practiceArea,
       experience:
@@ -63,6 +68,10 @@ class Advocate {
       tier: tier,
       role: firmRole ?? '',
       photoBytes: decodePhotoDataUrl(json['photo'] as String?),
+      workingDays:
+          (json['workingDays'] as List<dynamic>? ?? []).cast<String>(),
+      startTime: json['startTime'] as String? ?? '',
+      endTime: json['endTime'] as String? ?? '',
     );
   }
 
@@ -86,6 +95,15 @@ class Advocate {
 
   /// Decoded profile photo uploaded at onboarding (null if none).
   final Uint8List? photoBytes;
+
+  /// Backend user id, needed to book this advocate ('' for demo data).
+  final String id;
+
+  /// Weekly availability from onboarding: day labels ('Mon'…'Sun') plus
+  /// 24h 'HH:mm' office hours. Drive the booking date/slot pickers.
+  final List<String> workingDays;
+  final String startTime;
+  final String endTime;
 }
 
 class AdvocateListScreen extends StatefulWidget {

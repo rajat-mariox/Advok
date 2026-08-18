@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../Utils/AppColors/app_colors.dart';
 
 /// "Or login with" divider followed by the Google / Apple buttons,
-/// shared by the login and OTP screens.
+/// shared by the login and OTP screens. The Apple button is shown on every
+/// platform, but the sign-in flow itself only runs on iOS.
 class SocialLoginSection extends StatelessWidget {
   const SocialLoginSection({
     super.key,

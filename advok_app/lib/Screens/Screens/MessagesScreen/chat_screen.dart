@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart' show InitialsAvatar;
 
 class ChatMessage {
   const ChatMessage({
@@ -190,7 +191,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   )
                 : ClipOval(
-                    child: Image.asset(widget.image!, fit: BoxFit.cover),
+                    child: widget.image!.isEmpty
+                        ? InitialsAvatar(name: widget.name, size: 38)
+                        : Image.asset(widget.image!, fit: BoxFit.cover),
                   ),
           ),
           if (widget.online)
@@ -479,7 +482,7 @@ class _MessageBubble extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (image != null)
+        if (image != null && image!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(right: 8, top: 4),
             child: ClipOval(

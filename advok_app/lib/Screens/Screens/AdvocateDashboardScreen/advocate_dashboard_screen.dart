@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -7,18 +9,17 @@ import '../../../Utils/AppColors/app_colors.dart';
 import '../AdvocateCasesScreen/advocate_cases_screen.dart';
 import '../AdvocateCasesScreen/case_details_screen.dart';
 import '../AdvocateClientsScreen/client_directory.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart'
+    show InitialsAvatar, decodePhotoDataUrl;
 import '../MessagesScreen/chat_screen.dart';
 
 class _ScheduleEntry {
-  // The optional fields below are populated by API data once scheduling is
-  // live; no call site passes them while the list is empty.
   const _ScheduleEntry({
     required this.time,
     required this.title,
     required this.subtitle,
-    // ignore: unused_element_parameter
     this.status,
-    // ignore: unused_element_parameter
+    // ignore: unused_element_parameter — reserved for blocked-off slots.
     this.blocked = false,
   });
 
@@ -28,9 +29,6 @@ class _ScheduleEntry {
   final String? status;
   final bool blocked;
 }
-
-/// Today's appointments. Empty until scheduling is backed by the API.
-const List<_ScheduleEntry> _schedule = [];
 
 class _Hearing {
   const _Hearing({
@@ -51,21 +49,22 @@ class _Hearing {
 /// Upcoming hearings. Empty until hearings are backed by the API.
 const List<_Hearing> _hearings = [];
 
-class _ClientRequest {
-  const _ClientRequest({
-    required this.avatar,
+/// A pending consultation request (an office visit waiting for the advocate
+/// to accept or decline), built from the backend's /bookings response.
+class _VisitRequest {
+  const _VisitRequest({
+    required this.id,
     required this.name,
     required this.matter,
     required this.timeAgo,
-    // ignore: unused_element_parameter
-    this.urgent = false,
+    this.photoBytes,
   });
 
-  final String avatar;
+  final String id;
   final String name;
   final String matter;
   final String timeAgo;
-  final bool urgent;
+  final Uint8List? photoBytes;
 }
 
 /// Relative bar heights for the earnings chart, Jan–Jul. All zero until
@@ -103,20 +102,114 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
 
   static const List<String> _tabs = ['Today', 'Hearings', 'Tasks'];
 
-  /// Incoming client requests. Empty until requests are backed by the API.
-  final List<_ClientRequest> _pendingRequests = [];
+  /// Incoming visit requests waiting for this advocate's answer.
+  List<_VisitRequest> _pendingRequests = [];
 
-  void _declineRequest(_ClientRequest request) {
-    setState(() => _pendingRequests.remove(request));
+  /// Today's confirmed appointments.
+  List<_ScheduleEntry> _schedule = [];
+
+  /// Ids the advocate is currently responding to (buttons disabled).
+  final Set<String> _respondingIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBookings();
   }
 
-  void _acceptRequest(_ClientRequest request) {
-    ClientDirectory.instance.addFromAcceptedRequest(
-      name: request.name,
-      avatar: request.avatar,
-      matter: request.matter,
-    );
-    setState(() => _pendingRequests.remove(request));
+  static String _typeLabel(String kind) => switch (kind) {
+        'office_visit' => 'Office Visit',
+        'phone_call' => 'Phone Call',
+        _ => 'Video Call',
+      };
+
+  static String _timeAgo(String? createdAt) {
+    final created = DateTime.tryParse(createdAt ?? '');
+    if (created == null) return '';
+    final diff = DateTime.now().difference(created.toLocal());
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) {
+      return '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago';
+    }
+    return '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+  }
+
+  /// Loads this advocate's bookings: pending ones become requests to accept
+  /// or decline, today's confirmed ones fill the schedule card.
+  Future<void> _loadBookings() async {
+    final List<Map<String, dynamic>> result;
+    try {
+      result = await ApiService.fetchBookings();
+    } on ApiException {
+      return; // Dashboard still renders with its empty states.
+    }
+    if (!mounted) return;
+
+    final now = DateTime.now();
+    final todayIso = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    final requests = <_VisitRequest>[];
+    final schedule = <_ScheduleEntry>[];
+    for (final b in result) {
+      final status = b['status'] as String?;
+      final kind = b['consultationType'] as String? ?? 'video_call';
+      final name = b['clientName'] as String? ?? 'Client';
+      final date = b['date'] as String? ?? '';
+      final time = b['time'] as String? ?? '';
+      if (status == 'pending') {
+        final day = DateTime.tryParse(date);
+        final dateLabel = day == null
+            ? date
+            : '${_monthLabels[day.month - 1]} ${day.day}';
+        requests.add(_VisitRequest(
+          id: b['id'] as String? ?? '',
+          name: name,
+          matter: '${_typeLabel(kind)} · $dateLabel, $time',
+          timeAgo: _timeAgo(b['createdAt'] as String?),
+          photoBytes: decodePhotoDataUrl(b['clientPhoto'] as String?),
+        ));
+      } else if (status == 'confirmed' && date == todayIso) {
+        schedule.add(_ScheduleEntry(
+          time: time,
+          title: name,
+          subtitle: _typeLabel(kind),
+          status: 'Confirmed',
+        ));
+      }
+    }
+    setState(() {
+      _pendingRequests = requests;
+      _schedule = schedule;
+    });
+  }
+
+  Future<void> _respondToRequest(
+    _VisitRequest request, {
+    required bool accept,
+  }) async {
+    if (!_respondingIds.add(request.id)) return;
+    setState(() {});
+    try {
+      await ApiService.respondToBooking(request.id, accept: accept);
+      if (accept) {
+        ClientDirectory.instance.addFromAcceptedRequest(
+          name: request.name,
+          avatar: '',
+          matter: request.matter,
+        );
+      }
+      await _loadBookings();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } finally {
+      _respondingIds.remove(request.id);
+      if (mounted) setState(() {});
+    }
   }
 
   @override
@@ -175,8 +268,11 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                     _RequestCard(
                       request: request,
                       highlighted: i == 0,
-                      onAccept: () => _acceptRequest(request),
-                      onDecline: () => _declineRequest(request),
+                      busy: _respondingIds.contains(request.id),
+                      onAccept: () =>
+                          _respondToRequest(request, accept: true),
+                      onDecline: () =>
+                          _respondToRequest(request, accept: false),
                     ),
                   ],
                 const SizedBox(height: 20),
@@ -1414,12 +1510,16 @@ class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.request,
     required this.highlighted,
+    required this.busy,
     required this.onAccept,
     required this.onDecline,
   });
 
-  final _ClientRequest request;
+  final _VisitRequest request;
   final bool highlighted;
+
+  /// True while the accept/decline call is in flight (buttons disabled).
+  final bool busy;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -1439,57 +1539,30 @@ class _RequestCard extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              request.avatar,
-              width: 46,
-              height: 46,
-              fit: BoxFit.cover,
-            ),
+            child: request.photoBytes != null
+                ? Image.memory(
+                    request.photoBytes!,
+                    width: 46,
+                    height: 46,
+                    fit: BoxFit.cover,
+                  )
+                : InitialsAvatar(name: request.name, size: 46),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        request.name,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          height: 19.5 / 13,
-                          letterSpacing: -0.08,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (request.urgent) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.textPrimary,
-                          borderRadius: BorderRadius.circular(100),
-                        ),
-                        child: const Text(
-                          'Urgent',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            height: 1.5,
-                            letterSpacing: 0.17,
-                            color: AppColors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  request.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 19.5 / 13,
+                    letterSpacing: -0.08,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -1519,7 +1592,7 @@ class _RequestCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
-              onTap: onDecline,
+              onTap: busy ? null : onDecline,
               child: Container(
                 width: 34,
                 height: 34,
@@ -1551,7 +1624,7 @@ class _RequestCard extends StatelessWidget {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(18),
-                onTap: onAccept,
+                onTap: busy ? null : onAccept,
                 child: SizedBox(
                   width: 34,
                   height: 34,
