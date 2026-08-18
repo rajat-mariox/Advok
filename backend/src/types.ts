@@ -9,6 +9,13 @@ export type UserStatus =
   | 'rejected' // admin rejected
   | 'suspended'; // admin suspended the account (any role)
 
+/** One US state bar admission: state + bar number + license status. */
+export interface BarAdmission {
+  state: string;
+  barNumber: string;
+  licenseStatus: string;
+}
+
 export interface AdvocateProfile {
   advocateType: 'junior' | 'senior';
   /** Profile photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
@@ -33,6 +40,10 @@ export interface AdvocateProfile {
     barRegistrationNumber?: string;
     primaryCourt: string;
     practiceArea: string;
+    /** US-only: one or more state bar admissions. */
+    barAdmissions?: BarAdmission[];
+    /** US-only: optional federal court admissions. */
+    federalCourtAdmissions?: string[];
   };
   schedule: {
     workingDays: string[];

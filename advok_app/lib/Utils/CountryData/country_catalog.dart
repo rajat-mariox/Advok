@@ -20,6 +20,10 @@ class LegalTerms {
     this.districtFieldHint = 'Enter district or city…',
     this.districtPublicTerm = 'city/district',
     this.licenseLabel = 'Bar Registration Number',
+    this.courtFieldLabel = 'Primary Practice Court',
+    this.usesBarAdmissions = false,
+    this.licenseStatuses = const [],
+    this.federalCourts = const [],
     this.courts = const [
       'Supreme Court',
       'High Court',
@@ -62,7 +66,25 @@ class LegalTerms {
     districtFieldLabel: 'City / County',
     districtFieldHint: 'Enter city or county…',
     districtPublicTerm: 'city/county',
-    licenseLabel: 'State Bar License',
+    licenseLabel: 'State Bar Number',
+    courtFieldLabel: 'Bar Admissions / Court Admissions',
+    usesBarAdmissions: true,
+    licenseStatuses: [
+      'Active',
+      'Inactive',
+      'Pending Admission',
+      'Suspended',
+      'Retired',
+    ],
+    federalCourts: [
+      'U.S. District Court',
+      'U.S. Court of Appeals',
+      'U.S. Bankruptcy Court',
+      'U.S. Tax Court',
+      'U.S. Court of International Trade',
+      'U.S. Court of Federal Claims',
+      'U.S. Supreme Court',
+    ],
     courts: [
       'State Trial Court',
       'State Appellate Court',
@@ -135,6 +157,19 @@ class LegalTerms {
 
   /// What the license number field is called locally.
   final String licenseLabel;
+
+  /// Label of the court section on the professional-details form:
+  /// "Primary Practice Court" (India) or "Bar Admissions / Court
+  /// Admissions" (US).
+  final String courtFieldLabel;
+
+  /// US-style bar admissions: instead of a single primary court picker, the
+  /// professional-details form collects one or more state bar admissions
+  /// (state + bar number + license status) plus optional federal court
+  /// admissions.
+  final bool usesBarAdmissions;
+  final List<String> licenseStatuses;
+  final List<String> federalCourts;
 
   final List<String> courts;
   final String practiceAreaHint;
