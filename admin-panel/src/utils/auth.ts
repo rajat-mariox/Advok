@@ -22,7 +22,7 @@ export async function login(email: string, password: string): Promise<string | n
       body: JSON.stringify({ email: email.trim(), password }),
     });
   } catch {
-    return 'Cannot reach the ADVOK backend. Is it running on port 4000?';
+    return `Cannot reach the ADVOK backend at ${API_BASE}. Is it running?`;
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return data.error ?? 'Invalid email or password';
