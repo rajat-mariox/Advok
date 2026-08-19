@@ -1,4 +1,12 @@
-export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:4000/api';
+// Backend URL comes only from the environment — no hardcoded fallback.
+// Local dev: admin-panel/.env · Vercel: project Environment Variables (+ redeploy).
+const rawApiBase = import.meta.env.VITE_API_BASE as string | undefined;
+if (!rawApiBase) {
+  throw new Error(
+    'VITE_API_BASE is not set. Define it in admin-panel/.env (local) or in the Vercel project\'s Environment Variables, then rebuild/redeploy.',
+  );
+}
+export const API_BASE = rawApiBase.replace(/\/+$/, '');
 
 const SESSION_KEY = 'advok_admin_session';
 
