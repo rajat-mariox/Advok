@@ -1,9 +1,9 @@
 // Photo storage. With S3_BUCKET set, base64 data URLs sent by the app are
-// uploaded to S3 and only the resulting URL is saved in db.json. Without it
-// (local dev) the data URL is stored as-is, exactly like before.
+// uploaded to S3 and only the resulting URL is saved in the database. Without
+// it (local dev) the data URL is stored as-is, exactly like before.
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
-import { AWS_REGION, S3_BUCKET, S3_PUBLIC_URL } from './config';
+import { AWS_REGION, S3_BUCKET, S3_PUBLIC_URL } from '../config';
 
 const s3 = S3_BUCKET ? new S3Client({ region: AWS_REGION }) : null;
 

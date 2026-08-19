@@ -1,21 +1,14 @@
-import { Router, type Response } from 'express';
-import { createId, getDb, saveDb } from '../db';
-import { requireRole, type AuthedRequest } from '../middleware/auth';
+import type { Response } from 'express';
+import type { AuthedRequest } from '../middlewares/auth.middleware';
 import type {
   AdvocateProfile,
   Booking,
   ClientProfile,
   ConsultationKind,
   DbShape,
-} from '../types';
-
-const router = Router();
-
-const CONSULTATION_KINDS: ConsultationKind[] = [
-  'video_call',
-  'phone_call',
-  'office_visit',
-];
+} from '../models';
+import { createId, getDb, saveDb } from '../services/db.service';
+import { isBookingDate, isConsultationKind } from '../validators/booking.validator';
 
 function bookings(db: DbShape): Booking[] {
   db.bookings ??= [];
@@ -47,7 +40,7 @@ function toApi(booking: Booking, db: DbShape) {
  * Client books a consultation. Office visits need the advocate to accept
  * (status starts at 'pending'); video/phone calls are confirmed right away.
  */
-router.post('/', requireRole('client'), (req: AuthedRequest, res) => {
+export function createBooking(req: AuthedRequest, res: Response) {
   const me = req.user!;
   const { advocateId, consultationType, date, time, durationMinutes, amount } =
     req.body as {
@@ -64,10 +57,10 @@ router.post('/', requireRole('client'), (req: AuthedRequest, res) => {
       .status(400)
       .json({ error: 'advocateId, consultationType, date and time are required' });
   }
-  if (!CONSULTATION_KINDS.includes(consultationType as ConsultationKind)) {
+  if (!isConsultationKind(consultationType)) {
     return res.status(400).json({ error: 'Unknown consultation type' });
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isBookingDate(date)) {
     return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
   }
 
@@ -113,10 +106,10 @@ router.post('/', requireRole('client'), (req: AuthedRequest, res) => {
   bookings(db).push(booking);
   saveDb();
   return res.json({ booking: toApi(booking, db) });
-});
+}
 
 /** Bookings for the requesting user: their own side, newest first. */
-router.get('/', requireRole('client', 'advocate'), (req: AuthedRequest, res) => {
+export function listMyBookings(req: AuthedRequest, res: Response) {
   const me = req.user!;
   const db = getDb();
   const mine = bookings(db).filter((b) =>
@@ -124,10 +117,10 @@ router.get('/', requireRole('client', 'advocate'), (req: AuthedRequest, res) => 
   );
   const sorted = [...mine].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return res.json({ bookings: sorted.map((b) => toApi(b, db)) });
-});
+}
 
 /** Advocate accepts or declines a pending visit request. */
-function respond(action: 'accept' | 'decline') {
+export function respondToBooking(action: 'accept' | 'decline') {
   return (req: AuthedRequest, res: Response) => {
     const me = req.user!;
     const db = getDb();
@@ -147,11 +140,8 @@ function respond(action: 'accept' | 'decline') {
   };
 }
 
-router.post('/:id/accept', requireRole('advocate'), respond('accept'));
-router.post('/:id/decline', requireRole('advocate'), respond('decline'));
-
 /** Client cancels an upcoming (pending or confirmed) booking. */
-router.post('/:id/cancel', requireRole('client'), (req: AuthedRequest, res) => {
+export function cancelBooking(req: AuthedRequest, res: Response) {
   const me = req.user!;
   const db = getDb();
   const booking = bookings(db).find((b) => b.id === req.params.id);
@@ -167,6 +157,4 @@ router.post('/:id/cancel', requireRole('client'), (req: AuthedRequest, res) => {
   booking.cancelledAt = new Date().toISOString();
   saveDb();
   return res.json({ booking: toApi(booking, db) });
-});
-
-export default router;
+}

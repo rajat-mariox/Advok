@@ -1,20 +1,17 @@
-import { Router } from 'express';
-import { saveDb } from '../db';
-import { requireRole, type AuthedRequest } from '../middleware/auth';
-import { storePhoto } from '../storage';
-import type { AdvocateProfile, BarAdmission, LawFirmProfile, LawStudentProfile } from '../types';
-
-const router = Router();
-
-function missingFields(body: Record<string, unknown>, fields: string[]): string[] {
-  return fields.filter((f) => {
-    const value = f.split('.').reduce<unknown>((obj, key) => {
-      if (obj && typeof obj === 'object') return (obj as Record<string, unknown>)[key];
-      return undefined;
-    }, body);
-    return value === undefined || value === null || value === '';
-  });
-}
+import type { Response } from 'express';
+import type { AuthedRequest } from '../middlewares/auth.middleware';
+import type {
+  AdvocateProfile,
+  LawFirmProfile,
+  LawStudentProfile,
+} from '../models';
+import { saveDb } from '../services/db.service';
+import { storePhoto } from '../services/storage.service';
+import {
+  missingFields,
+  parseBarAdmissions,
+  parseFederalCourtAdmissions,
+} from '../validators/onboarding.validator';
 
 function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile | LawFirmProfile) {
   const user = req.user!;
@@ -27,7 +24,7 @@ function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile
 }
 
 /** Advocate onboarding — the aggregated data of all 5 registration steps. */
-router.post('/advocate', requireRole('advocate'), async (req: AuthedRequest, res) => {
+export async function submitAdvocate(req: AuthedRequest, res: Response) {
   const body = req.body ?? {};
   // Older app builds sent the license as `barRegistrationNumber`.
   if (body.professional && body.professional.licenseNumber == null) {
@@ -36,23 +33,10 @@ router.post('/advocate', requireRole('advocate'), async (req: AuthedRequest, res
   // US flow: structured state bar admissions (state + bar number + license
   // status) plus optional federal court admissions. The first admission also
   // backfills the legacy licenseNumber/primaryCourt fields if the app didn't.
-  const barAdmissions: BarAdmission[] = Array.isArray(body.professional?.barAdmissions)
-    ? body.professional.barAdmissions
-        .filter(
-          (a: Record<string, unknown>) =>
-            a && typeof a.state === 'string' && a.state &&
-            typeof a.barNumber === 'string' && a.barNumber &&
-            typeof a.licenseStatus === 'string' && a.licenseStatus,
-        )
-        .map((a: Record<string, string>) => ({
-          state: a.state,
-          barNumber: a.barNumber,
-          licenseStatus: a.licenseStatus,
-        }))
-    : [];
-  const federalCourtAdmissions: string[] = Array.isArray(body.professional?.federalCourtAdmissions)
-    ? body.professional.federalCourtAdmissions.filter((c: unknown) => typeof c === 'string' && c)
-    : [];
+  const barAdmissions = parseBarAdmissions(body.professional?.barAdmissions);
+  const federalCourtAdmissions = parseFederalCourtAdmissions(
+    body.professional?.federalCourtAdmissions,
+  );
   if (body.professional && barAdmissions.length) {
     if (body.professional.licenseNumber == null) {
       body.professional.licenseNumber = barAdmissions[0].barNumber;
@@ -111,10 +95,10 @@ router.post('/advocate', requireRole('advocate'), async (req: AuthedRequest, res
   };
   const user = submit(req, profile);
   return res.json({ status: user.status, message: 'Advocate onboarding submitted for review' });
-});
+}
 
 /** Law student onboarding — verification details + ID card. */
-router.post('/law-student', requireRole('law_student'), (req: AuthedRequest, res) => {
+export function submitLawStudent(req: AuthedRequest, res: Response) {
   const body = req.body ?? {};
   const missing = missingFields(body, ['fullName', 'college', 'course', 'academicYear']);
   if (missing.length) {
@@ -129,10 +113,10 @@ router.post('/law-student', requireRole('law_student'), (req: AuthedRequest, res
   };
   const user = submit(req, profile);
   return res.json({ status: user.status, message: 'Student verification submitted for review' });
-});
+}
 
 /** Law firm onboarding — firm details + legal team. */
-router.post('/law-firm', requireRole('law_firm'), (req: AuthedRequest, res) => {
+export function submitLawFirm(req: AuthedRequest, res: Response) {
   const body = req.body ?? {};
   const missing = missingFields(body, [
     'firmName',
@@ -165,16 +149,14 @@ router.post('/law-firm', requireRole('law_firm'), (req: AuthedRequest, res) => {
   };
   const user = submit(req, profile);
   return res.json({ status: user.status, message: 'Firm registration submitted for review' });
-});
+}
 
 /** App polls this to know whether the admin has approved/rejected the account. */
-router.get('/status', requireRole('advocate', 'law_student', 'law_firm', 'client'), (req: AuthedRequest, res) => {
+export function onboardingStatus(req: AuthedRequest, res: Response) {
   const user = req.user!;
   return res.json({
     role: user.role,
     status: user.status,
     rejectionReason: user.rejectionReason ?? null,
   });
-});
-
-export default router;
+}
