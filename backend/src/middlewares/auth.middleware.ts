@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config';
-import { findUserById } from '../db';
-import type { Role, User } from '../types';
+import type { Role, User } from '../models';
+import { findUserById } from '../services/db.service';
 
 export interface AuthedRequest extends Request {
   user?: User;

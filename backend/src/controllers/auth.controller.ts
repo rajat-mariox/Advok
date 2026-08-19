@@ -1,30 +1,25 @@
 import appleSignin from 'apple-signin-auth';
 import bcrypt from 'bcryptjs';
-import { Router } from 'express';
+import type { Request, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
-import jwt from 'jsonwebtoken';
 import {
   ADMIN_TOKEN_TTL,
   APPLE_BUNDLE_ID,
   APP_TOKEN_TTL,
   GOOGLE_CLIENT_ID,
-  JWT_SECRET,
   OTP_TTL_MS,
 } from '../config';
-import { createId, getDb, publicUser, saveDb } from '../db';
-import { requireAuth, type AuthedRequest } from '../middleware/auth';
-import type { Role } from '../types';
-
-const router = Router();
+import type { AuthedRequest } from '../middlewares/auth.middleware';
+import type { Role } from '../models';
+import { createId, getDb, saveDb } from '../services/db.service';
+import { signToken } from '../services/token.service';
+import { publicUser } from '../util/user.util';
+import { isValidPhone } from '../validators/auth.validator';
 
 const APP_ROLES: Role[] = ['client', 'advocate', 'law_student', 'law_firm'];
 
-function signToken(userId: string, ttl: string): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: ttl } as jwt.SignOptions);
-}
-
 /** Admin panel login: email + password. */
-router.post('/admin/login', (req, res) => {
+export function adminLogin(req: Request, res: Response) {
   const { email, password } = req.body ?? {};
   if (typeof email !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'email and password are required' });
@@ -42,12 +37,12 @@ router.post('/admin/login', (req, res) => {
     expiresAt: Date.now() + 8 * 60 * 60 * 1000,
     user: publicUser(admin),
   });
-});
+}
 
 /** App login step 1: request an OTP for a phone number. */
-router.post('/send-otp', (req, res) => {
+export function sendOtp(req: Request, res: Response) {
   const { phone, countryCode, country } = req.body ?? {};
-  if (typeof phone !== 'string' || phone.replace(/\D/g, '').length < 6) {
+  if (!isValidPhone(phone)) {
     return res.status(400).json({ error: 'A valid phone number is required' });
   }
   const db = getDb();
@@ -64,10 +59,10 @@ router.post('/send-otp', (req, res) => {
   // No SMS gateway in this prototype — the OTP is logged and returned as devOtp.
   console.log(`[OTP] ${countryCode ?? ''}${phone} -> ${otp}`);
   return res.json({ message: 'OTP sent', devOtp: otp });
-});
+}
 
 /** App login step 2: verify OTP. Creates the user on first login. */
-router.post('/verify-otp', (req, res) => {
+export function verifyOtp(req: Request, res: Response) {
   const { phone, otp } = req.body ?? {};
   if (typeof phone !== 'string' || typeof otp !== 'string') {
     return res.status(400).json({ error: 'phone and otp are required' });
@@ -99,7 +94,7 @@ router.post('/verify-otp', (req, res) => {
   saveDb();
   const token = signToken(user.id, APP_TOKEN_TTL);
   return res.json({ token, user: publicUser(user) });
-});
+}
 
 const googleClient = new OAuth2Client();
 
@@ -108,7 +103,7 @@ const googleClient = new OAuth2Client();
  * Sign-In; we verify it with Google, then find or create the user — the same
  * outcome as verify-otp, so the app's post-login routing works unchanged.
  */
-router.post('/google', async (req, res) => {
+export async function googleLogin(req: Request, res: Response) {
   const { idToken, country } = req.body ?? {};
   if (typeof idToken !== 'string' || !idToken) {
     return res.status(400).json({ error: 'idToken is required' });
@@ -170,7 +165,7 @@ router.post('/google', async (req, res) => {
   saveDb();
   const token = signToken(user.id, APP_TOKEN_TTL);
   return res.json({ token, user: publicUser(user) });
-});
+}
 
 /**
  * App login with Apple. The app sends the identity token from Sign in with
@@ -179,7 +174,7 @@ router.post('/google', async (req, res) => {
  * sign-in (and only to the app, not inside the token), so the app forwards it
  * as fullName and we store it right away — later logins won't include it.
  */
-router.post('/apple', async (req, res) => {
+export async function appleLogin(req: Request, res: Response) {
   const { identityToken, fullName, country } = req.body ?? {};
   if (typeof identityToken !== 'string' || !identityToken) {
     return res.status(400).json({ error: 'identityToken is required' });
@@ -243,10 +238,10 @@ router.post('/apple', async (req, res) => {
   saveDb();
   const token = signToken(user.id, APP_TOKEN_TTL);
   return res.json({ token, user: publicUser(user) });
-});
+}
 
 /** App login step 3: choose a role (first login only). */
-router.post('/select-role', requireAuth, (req: AuthedRequest, res) => {
+export function selectRole(req: AuthedRequest, res: Response) {
   const { role } = req.body ?? {};
   const user = req.user!;
   if (!APP_ROLES.includes(role)) {
@@ -265,11 +260,9 @@ router.post('/select-role', requireAuth, (req: AuthedRequest, res) => {
   }
   saveDb();
   return res.json({ user: publicUser(user) });
-});
+}
 
 /** Current authenticated user. */
-router.get('/me', requireAuth, (req: AuthedRequest, res) => {
+export function me(req: AuthedRequest, res: Response) {
   return res.json({ user: publicUser(req.user!) });
-});
-
-export default router;
+}

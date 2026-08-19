@@ -1,9 +1,7 @@
-import { Router } from 'express';
-import { getDb } from '../db';
-import { requireAuth, type AuthedRequest } from '../middleware/auth';
-import type { AdvocateProfile } from '../types';
-
-const router = Router();
+import type { Response } from 'express';
+import type { AuthedRequest } from '../middlewares/auth.middleware';
+import type { AdvocateProfile } from '../models';
+import { getDb } from '../services/db.service';
 
 /**
  * Verified advocates/attorneys the requesting user can browse.
@@ -12,7 +10,7 @@ const router = Router();
  * only sees US attorneys. Accounts saved before country tracking (no country
  * on either side) are not filtered out, so old test data keeps working.
  */
-router.get('/', requireAuth, (req: AuthedRequest, res) => {
+export function listAdvocates(req: AuthedRequest, res: Response) {
   const me = req.user!;
   const db = getDb();
   const list = db.users.filter((u) => {
@@ -42,6 +40,4 @@ router.get('/', requireAuth, (req: AuthedRequest, res) => {
       };
     }),
   });
-});
-
-export default router;
+}

@@ -1,18 +1,15 @@
-import { Router } from 'express';
-import { publicUser, saveDb } from '../db';
-import { requireAuth, type AuthedRequest } from '../middleware/auth';
-import { storePhoto } from '../storage';
+import type { Response } from 'express';
+import type { AuthedRequest } from '../middlewares/auth.middleware';
 import type {
   AdvocateProfile,
   ClientProfile,
   LawFirmProfile,
   LawStudentProfile,
-} from '../types';
-
-const router = Router();
-
-const str = (v: unknown): string | undefined =>
-  typeof v === 'string' && v.trim() ? v.trim() : undefined;
+} from '../models';
+import { saveDb } from '../services/db.service';
+import { storePhoto } from '../services/storage.service';
+import { str } from '../util/string.util';
+import { publicUser } from '../util/user.util';
 
 /**
  * Edit Profile for every app role. Only display fields are editable here —
@@ -26,7 +23,7 @@ const str = (v: unknown): string | undefined =>
  *
  * photo: '' removes the picture; omit to keep the current one.
  */
-router.put('/', requireAuth, async (req: AuthedRequest, res) => {
+export async function updateProfile(req: AuthedRequest, res: Response) {
   const user = req.user!;
   if (user.role === 'admin' || user.role === null) {
     return res.status(403).json({ error: 'This account cannot edit an app profile' });
@@ -88,6 +85,4 @@ router.put('/', requireAuth, async (req: AuthedRequest, res) => {
 
   saveDb();
   return res.json({ user: publicUser(user) });
-});
-
-export default router;
+}

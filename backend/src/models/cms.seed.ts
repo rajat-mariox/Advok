@@ -1,4 +1,4 @@
-import type { CmsPage } from './types';
+import type { CmsPage } from './cms.model';
 
 /**
  * Default app pages, seeded once into the DB. Content matches what the app

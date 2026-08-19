@@ -19,6 +19,11 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 // match PRODUCT_BUNDLE_IDENTIFIER in the iOS project.
 export const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID ?? 'com.example.advokApp';
 
+// MongoDB — set MONGODB_URI to store data in MongoDB (Atlas or self-hosted).
+// Without it, data lives in backend/data/db.json exactly as before.
+export const MONGODB_URI = process.env.MONGODB_URI ?? '';
+export const MONGODB_DB = process.env.MONGODB_DB ?? 'advok';
+
 // S3 photo storage — set S3_BUCKET to upload profile photos to S3 instead of
 // keeping them as base64 inside db.json. Credentials come from the standard
 // AWS env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) or, on EC2, the
