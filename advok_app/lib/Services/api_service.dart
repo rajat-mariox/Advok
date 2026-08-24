@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Utils/CountryData/country_catalog.dart';
 
@@ -29,12 +30,63 @@ List<String> get _candidateUrls {
   return ['http://localhost:4000/api'];
 }
 
-/// In-memory auth session for the current app run.
+/// Auth session for the current app run, mirrored to local storage so a
+/// login survives the app being closed (the backend token lasts 30 days).
 class Session {
   Session._();
 
-  static String? token;
-  static Map<String, dynamic>? user;
+  static const _tokenKey = 'advok_session_token';
+  static const _userKey = 'advok_session_user';
+
+  static String? _token;
+  static Map<String, dynamic>? _user;
+
+  static String? get token => _token;
+  static set token(String? value) {
+    _token = value;
+    _persist();
+  }
+
+  static Map<String, dynamic>? get user => _user;
+  static set user(Map<String, dynamic>? value) {
+    _user = value;
+    _persist();
+  }
+
+  /// Loads the last saved login from disk (called once on app start).
+  /// Returns false when there is no usable saved session.
+  static Future<bool> restore() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString(_tokenKey);
+    final savedUser = prefs.getString(_userKey);
+    if (savedToken == null || savedUser == null) return false;
+    try {
+      _user = jsonDecode(savedUser) as Map<String, dynamic>;
+    } catch (_) {
+      return false;
+    }
+    _token = savedToken;
+    // Restore the (India/US) experience of this account even before the
+    // backend is reached.
+    final savedCountry = country;
+    if (savedCountry != null && savedCountry.isNotEmpty) {
+      CountryCatalog.select(savedCountry);
+    }
+    return true;
+  }
+
+  /// Fire-and-forget disk write — login flows shouldn't block on storage.
+  static void _persist() {
+    SharedPreferences.getInstance().then((prefs) {
+      if (_token == null || _user == null) {
+        prefs.remove(_tokenKey);
+        prefs.remove(_userKey);
+      } else {
+        prefs.setString(_tokenKey, _token!);
+        prefs.setString(_userKey, jsonEncode(_user));
+      }
+    });
+  }
 
   static String? get role => user?['role'] as String?;
   static String? get status => user?['status'] as String?;
@@ -110,15 +162,20 @@ class Session {
   }
 
   static void clear() {
-    token = null;
-    user = null;
+    _token = null;
+    _user = null;
+    _persist();
   }
 }
 
 class ApiException implements Exception {
-  ApiException(this.message);
+  ApiException(this.message, {this.statusCode});
 
   final String message;
+
+  /// HTTP status of the failed response, or null when the server was
+  /// unreachable (timeout / no connection).
+  final int? statusCode;
 
   @override
   String toString() => message;
@@ -188,7 +245,10 @@ class ApiService {
       throw ApiException('Unexpected server response.');
     }
     if (response.statusCode >= 400) {
-      throw ApiException(data['error'] as String? ?? 'Something went wrong.');
+      throw ApiException(
+        data['error'] as String? ?? 'Something went wrong.',
+        statusCode: response.statusCode,
+      );
     }
     return data;
   }
