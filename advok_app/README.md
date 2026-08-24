@@ -1,184 +1,165 @@
- # Advok App
+# Advok — India and United States market flows
 
-Advok is a Flutter mobile app that connects **clients** with legal professionals — **advocates**, **law students**, and **law firms**. Clients can search advocates, book consultations, and chat; professionals register, get verified by an admin, and then get a role-specific dashboard.
+Advok is a legal-services marketplace that connects clients with verified legal professionals, law students, and law firms. The selected country determines the legal terminology, registration requirements, location choices, professional verification, discovery filters, and dashboard language.
 
-The app talks to the Node/Express backend in [`../backend`](../backend), and registrations are approved/rejected from the React admin panel in [`../admin-panel`](../admin-panel).
+This document is a product and operations reference for the two supported legal markets. It contains no implementation instructions.
 
-## Tech stack
+## Market selection and account entry
 
-- **App:** Flutter (Material 3, Inter font), plain `http` for networking — no state-management package; an in-memory `Session` holds the auth token and user.
-- **Backend:** Express + TypeScript, JWT auth, JSON-file database (`backend/data`). Runs on port **4000**.
-- **Admin panel:** React + Vite + TypeScript.
+Every journey begins with country selection. A user chooses **India** or **United States**, enters a local mobile number, completes one-time-password verification, and then chooses a role.
 
-## App flow (high level)
+The chosen market remains attached to the account. Returning users return to the market they registered in, so an India account sees India terminology and a US account sees US terminology.
 
-```
-SplashScreen
-   │
-   ▼
-SelectCountryScreen ──► LoginScreen (phone) ──► OtpScreen (6-digit OTP)
-                                                     │
-                                                     ▼
-                                          PostLoginNavigator decides:
-                                                     │
-        ┌───────────────┬────────────────┬───────────┴──────────┬───────────────┐
-        ▼               ▼                ▼                      ▼               ▼
-   status: new     role: client    status: pending       status: rejected   status: approved
-   (first login)   (no approval    approval              RegistrationRe-    / active
-        │           needed)             │                jectedScreen            │
-        ▼               ▼               ▼                (shows admin's          ▼
-  ChooseRoleScreen  ClientNavScreen  "Submitted"          reason, can       Role dashboard
-        │                            waiting screen       re-apply)         (see below)
-        ▼                            (polls status
-  Role onboarding                    every 8s)
-  (see below)
+```text
+Open app → Select country → Verify phone number → Choose role
+                                                   ├─ Client
+                                                   ├─ Legal professional
+                                                   ├─ Law student
+                                                   └─ Law firm
 ```
 
-### 1. Login (OTP)
+Clients become active immediately. Legal professionals, students, and firms complete registration and wait for an administrator’s decision.
 
-1. **Splash → Select Country → Login:** user picks a country code and enters a phone number.
-2. `POST /api/auth/send-otp` — this is a prototype, so there is no SMS gateway: the OTP is printed in the backend console and returned as `devOtp` (the app can show it for testing).
-3. **OtpScreen** verifies via `POST /api/auth/verify-otp`. On first login the backend **creates the user** with `role: null, status: 'new'` and returns a JWT + user object, stored in the in-memory `Session`.
-4. [`PostLoginNavigator`](lib/Services/post_login_navigator.dart) then routes based on `Session.role` + `Session.status` (see diagram above). If the role was chosen earlier but the form never submitted (`onboarding_required`), the registration flow restarts.
+## Shared lifecycle
 
-### 2. Choose role & onboarding
-
-On **ChooseRoleScreen** (`POST /api/auth/select-role`) the user picks one of four roles:
-
-| Role | Onboarding | Approval needed? |
-|---|---|---|
-| **Client** | None — goes straight to `ClientNavScreen` | No |
-| **Advocate** | Describe Yourself → Select Purpose → Professional Details → Practice Location → My Schedule → submit | Yes |
-| **Law Student** | Student Verification form (college/ID details) → submit | Yes |
-| **Law Firm** | Register Firm → Add Legal Team → submit | Yes |
-
-- Advocate onboarding data collects across steps in `AdvocateOnboardingData` and submits once at the end via `POST /api/onboarding/advocate` (similarly `/law-student`, `/law-firm`).
-- After submit the user lands on a **"Verification Submitted"** screen and their status becomes `pending_approval`.
-
-### 3. Admin approval
-
-- The admin logs into the **admin panel** (`POST /api/auth/admin/login`) and sees pending registrations (`GET /api/admin/registrations`), then **approves**, **rejects** (with a reason), or **reopens** them.
-- Meanwhile the app's [`ApprovalStatusPoller`](lib/Services/approval_status_poller.dart) polls `GET /api/onboarding/status` every **8 seconds**:
-  - **approved** → refreshes the profile (`GET /api/auth/me`) and unlocks the dashboard automatically.
-  - **rejected** → shows `RegistrationRejectedScreen` with the admin's reason; the user can re-apply.
-
-### 4. Role dashboards (bottom navigation)
-
-Each role gets its own nav shell with 5 tabs (`IndexedStack`):
-
-| Role | Tabs |
-|---|---|
-| **Client** (`ClientNavScreen`) | Home · Search (advocate list) · Messages · Bookings · Profile |
-| **Advocate** (`AdvocateNavScreen`) | Home (dashboard) · Clients · Messages · Cases · Profile |
-| **Law Student** (`StudentNavScreen`) | Home · Advocates (find mentors) · Messages · Queries · Profile |
-| **Law Firm** (`FirmNavScreen`) | Home (dashboard) · Lawyers · Messages · Cases · Firm profile |
-
-Key in-app flows from the dashboards:
-
-- **Client booking:** Advocate list → Advocate profile → Consultation type → Select date/time → Booking summary → Booking confirmed (appears under the Bookings tab).
-- **Student mentorship:** Find Mentors → Request Mentorship → Availability → Message → Request Sent. Students also get news articles, case studies, and legal queries.
-- **Advok AI:** an AI assistant screen available from the home screens.
-- **Messaging:** Messages tab → Chat screen (all roles).
-- **Help & Support / CMS:** static pages are served from the backend CMS (`GET /api/cms/:slug`), editable from the admin panel.
-
-## Country-aware flow (India vs US)
-
-The country picked on **SelectCountryScreen** drives the whole legal flow via
-[`CountryCatalog`](lib/Utils/CountryData/country_catalog.dart): each
-`CountryProfile` carries a `LegalTerms` config (terminology, courts, license
-labels, advocate tiers). Defaults are the Indian system; the US overrides them:
-
-| | India | United States |
-|---|---|---|
-| Role name | Advocate | Attorney |
-| Tiers | Junior / Senior Advocate | Associate / Senior Attorney |
-| License field | Bar Registration Number | State Bar Number |
-| Senior/mentor name | Mandatory for juniors | Optional (supervising attorney) |
-| Courts | Supreme / High / District Court… | State & Federal courts… |
-| Verification | Bar Council records | State bar records |
-
-The chosen country is sent with `send-otp`, stored on the user by the backend,
-and re-synced into `CountryCatalog` on every login (`fetchMe`) — so a returning
-user always gets the flow they registered with, and the admin knows which
-authority to verify against. Other countries keep the default (Indian-style)
-wording until they get their own `LegalTerms`.
-
-## Project structure
-
-```
-lib/
-├── main.dart                    # App entry — theme, global text scaling, SplashScreen
-├── AppNavigation/               # Bottom-nav shells: client / advocate / student / firm
-├── CommonWidgets/               # Shared UI (back button, social login, profile sheets)
-├── Screens/
-│   ├── SplashScreen/ SelectCountryScreen/ LoginScreen/ OtpScreen/
-│   ├── ChooseRoleScreen/        # Role picker after first login
-│   ├── AdvocateRegistration/    # 5-step advocate onboarding + submitted screen
-│   ├── LawStudentRegistration/  # Student verification + submitted screen
-│   ├── LawFirmRegistration/     # Firm registration + legal team + submitted screen
-│   ├── RegistrationStatus/      # Rejected screen (with admin reason)
-│   └── Screens/                 # All post-login screens per role (home, bookings,
-│                                #   cases, mentors, messages, profile, Advok AI…)
-├── Services/
-│   ├── api_service.dart         # Session + all backend calls, auto base-URL discovery
-│   ├── post_login_navigator.dart# Routes user after OTP based on role/status
-│   └── approval_status_poller.dart # 8s polling while pending approval
-└── Utils/                       # AppColors, Responsive helpers, country catalog
-```
-
-## Backend API used by the app
-
-| Endpoint | Purpose |
-|---|---|
-| `POST /api/auth/send-otp` | Send (log + return) OTP for a phone |
-| `POST /api/auth/verify-otp` | Verify OTP → JWT + user (created on first login) |
-| `POST /api/auth/select-role` | Save chosen role (`client` / `advocate` / `law_student` / `law_firm`) |
-| `GET  /api/auth/me` | Refresh current user + submitted profile |
-| `POST /api/onboarding/advocate` / `law-student` / `law-firm` | Submit onboarding form → `pending_approval` |
-| `GET  /api/onboarding/status` | Poll approval status (+ rejection reason) |
-| `GET  /api/cms/:slug` | CMS pages (help, terms, etc.) |
-
-### User status lifecycle
-
-```
-new ──select-role──► onboarding_required ──submit form──► pending_approval
+```text
+New account → Role selected → Registration in progress → Submitted for review
                                                               │
-                                            admin approves ◄──┴──► admin rejects
-                                                 │                     │
-                                              approved              rejected ──re-apply──► pending_approval
+                                      ┌───────────────────────┴───────────────────────┐
+                                      ↓                                               ↓
+                                  Approved                                        Rejected
+                                      ↓                                               ↓
+                              Relevant dashboard                         Show reason → revise → resubmit
 ```
 
-(Clients skip the approval part entirely — they are active right after choosing the role.)
+While a registration is under review, the user sees a submitted-status screen. Approval makes the profile available in the matching country’s marketplace. A rejected applicant sees the reviewer’s reason and can reapply.
 
-## Running the app
+## India market
 
-1. **Start the backend** (from `../backend`):
+### Local terminology
 
-   ```bash
-   npm install
-   npm run dev        # http://localhost:4000
-   ```
+| Product concept | India experience |
+|---|---|
+| Legal professional | Advocate |
+| Experience levels | Junior Advocate; Senior Advocate |
+| Professional credential | Bar Registration Number |
+| Verification source | Bar Council records |
+| Junior guidance | Senior Advocate Name is required |
+| Location | State, District / City |
+| Practice courts | Supreme Court, High Court, District Court, Family Court, Consumer Court, Tribunal |
+| Schedule language | Hearings & Tasks |
 
-2. **Run the Flutter app** (from this folder):
+### India advocate registration
 
-   ```bash
-   flutter pub get
-   flutter run
-   ```
+1. The user chooses **Advocate**.
+2. In **Describe Yourself**, they choose Junior Advocate or Senior Advocate and identify their purpose for joining.
+3. In **Professional Details**, they provide personal and professional information, bar registration number, primary practice court, practice areas, and—when registering as a junior—the required senior advocate’s name.
+4. In **Practice Location**, they select an Indian state and enter their district or city. Only the intended public location detail is exposed to clients.
+5. In **My Schedule**, they set availability and add hearings or tasks that affect availability.
+6. They submit the application for Bar Council-based verification.
+7. After approval, the advocate receives the India advocate dashboard and appears to India clients who search matching practice areas and locations.
 
-   The app auto-discovers the backend by probing `/health` on, in order: `localhost:4000` (desktop/web, or USB phone after `adb reverse tcp:4000 tcp:4000`), `10.0.2.2:4000` (Android emulator), and the dev machine's LAN IP (physical phone on the same Wi-Fi — update `_devMachineLanIp` in [api_service.dart](lib/Services/api_service.dart) if your Wi-Fi IP changes, check with `ipconfig`).
+```text
+Choose Advocate → Experience tier → Professional details → India practice location
+       → Availability and hearings → Bar Council review → Approved advocate profile
+```
 
-   To point at a specific server instead:
+### India client journey
 
-   ```bash
-   flutter run --dart-define=ADVOK_API_URL=http://<host>:4000/api
-   ```
+1. The client selects **India**, verifies their number, and chooses **Client**.
+2. They enter the client home experience immediately.
+3. They browse verified advocates, search by name, and filter by practice area, location, court, or advocate tier.
+4. They open an advocate profile, review professional details and consultation options, and select a consultation type.
+5. They select a date and time, review the booking summary, and confirm the request.
+6. Video and phone consultations are confirmed immediately. An office-visit request waits for the advocate to accept or decline.
+7. The client tracks, cancels where permitted, or joins the consultation from **Bookings**; messages remain available through **Messages**.
 
-3. **(Optional) Admin panel** for approving registrations (from `../admin-panel`):
+### India law student and firm journeys
 
-   ```bash
-   npm install
-   npm run dev
-   ```
+- **Law student:** Select Law Student → submit college and identity verification details → administrator review → student dashboard. The approved student can find advocate mentors, send mentorship requests, message professionals, read legal learning content, and participate in legal queries.
 
-> **Note:** OTPs are printed in the backend console (`[OTP] <phone> -> <code>`) and returned as `devOtp` — no real SMS is sent in this prototype.
+- **Law firm:** Select Law Firm → register firm details and India location → add the legal team → administrator review → firm dashboard. An approved firm manages lawyers, client matters, messages, cases, and its firm profile.
+
+## United States market
+
+### Local terminology
+
+| Product concept | United States experience |
+|---|---|
+| Legal professional | Attorney |
+| Professional classification | Years in practice and firm role |
+| Firm roles | Partner, Associate, Senior Associate, Of Counsel, Counsel, Staff Attorney, Solo Practitioner |
+| Professional credential | State Bar Number and bar-admission status |
+| Verification source | State bar records |
+| Supervising-attorney field | Optional |
+| Location | State, City / County |
+| Admissions | State bar admissions plus optional federal court admissions |
+| Practice courts | State trial/appellate/supreme courts; federal district/appeals courts; family, bankruptcy, and immigration courts |
+| Schedule language | Court Events & Tasks |
+
+### US attorney registration
+
+1. The user chooses **United States** and then **Attorney**.
+2. In **Describe Yourself**, they select years in practice and a firm role instead of an India-style junior/senior tier.
+3. In **Professional Details**, they enter professional information, practice areas, and one or more state bar admissions. Each admission includes the state, State Bar Number, and license status.
+4. They can add applicable federal court admissions. A supervising attorney’s name can be included but is not mandatory.
+5. In **Practice Location**, they select a US state and provide their city or county.
+6. In **My Schedule**, they set availability and add court events or other tasks.
+7. They submit the registration for state-bar verification.
+8. When approved, their attorney profile is listed only to US clients and reflects their firm role, admissions, practice areas, and service location.
+
+```text
+Choose Attorney → Years in practice + firm role → State bar admissions
+       → Optional federal admissions → US location → Court events and availability
+       → State bar review → Approved attorney profile
+```
+
+### US client journey
+
+1. The client selects **United States**, verifies their number, and chooses **Client**.
+2. They browse verified attorneys in the United States marketplace.
+3. They search or filter by practice area, state, city/county, attorney firm role, and relevant admissions.
+4. They open an attorney profile and choose video, phone, or office consultation where available.
+5. They select date and time, review the summary, and place the booking.
+6. Video and phone bookings are confirmed immediately; office consultations require the attorney’s acceptance.
+7. The client manages the appointment in **Bookings** and contacts the attorney through **Messages**.
+
+### US law student and firm journeys
+
+- **Law student:** Select Law Student → submit school and identity verification details, using US degree wording such as J.D. or LL.M. → administrator review → student dashboard. The student can find attorney mentors, request mentorship, message users, and use learning and legal-query features.
+
+- **Law firm:** Select Law Firm → register firm information and US location → add legal team → administrator review → firm dashboard. The firm can manage attorneys, cases, clients, messages, and its public firm profile.
+
+## Marketplace and booking operations
+
+The marketplace is country-separated: clients see approved legal professionals registered for their own market. Country-specific labels and filters make a profile understandable in its legal context without asking users to translate between systems.
+
+```text
+Client home → Find professionals → Search or filter → Profile
+    → Consultation type → Date and time → Booking review → Booking created
+                                                              ├─ Video / phone: confirmed
+                                                              └─ Office visit: attorney or advocate responds
+```
+
+For legal professionals, the dashboard surfaces client requests, upcoming consultations, messages, and case-related work. For clients, the dashboard surfaces discovery, bookings, messages, profile management, help, and the Advok AI assistant.
+
+## Roles and access after approval
+
+| Role | India dashboard language | US dashboard language | Main capabilities |
+|---|---|---|---|
+| Client | Find Advocates | Find Attorneys | Discover, book, message, manage profile |
+| Legal professional | Advocate | Attorney | Manage clients, bookings, messages, cases, schedule, profile |
+| Law student | Advocate mentors | Attorney mentors | Find mentors, messages, queries, learning content |
+| Law firm | Lawyers / advocates | Attorneys | Manage legal team, cases, messages, firm profile |
+
+## Operational review checklist
+
+Administrators review pending submissions against the correct market authority and details before approving a profile.
+
+| India | United States |
+|---|---|
+| Confirm the advocate’s Bar Registration Number and Bar Council record. | Confirm state bar admission, State Bar Number, and license status. |
+| Check the selected practice court, state, and district/city. | Check declared state admissions, optional federal admissions, and state plus city/county location. |
+| Confirm the junior advocate’s named senior advocate where applicable. | Review firm role, years in practice, and optional supervising-attorney information. |
+
+Approval unlocks the relevant dashboard and marketplace visibility. A rejection should include a clear reason so the applicant can correct the submission and resubmit.

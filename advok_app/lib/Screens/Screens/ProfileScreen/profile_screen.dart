@@ -401,6 +401,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => const LogoutSheet(),
     );
     if (confirmed == true && mounted) {
+      Session.clear();
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const SelectCountryScreen()),
         (route) => false,
