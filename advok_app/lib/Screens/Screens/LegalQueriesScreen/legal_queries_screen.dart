@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
 import '../FindMentorsScreen/find_mentors_screen.dart';
@@ -18,11 +22,55 @@ const List<String> _categories = [
   'Cyber Law',
 ];
 
+/// A legal query as the backend stores it.
 class _LegalQuery {
-  const _LegalQuery({required this.question, required this.timeAgo});
+  const _LegalQuery({
+    required this.id,
+    required this.question,
+    required this.category,
+    required this.answered,
+    required this.createdAt,
+    this.response,
+    this.responderName,
+    this.answeredAt,
+  });
 
+  factory _LegalQuery.fromApi(Map<String, dynamic> json) {
+    return _LegalQuery(
+      id: json['id'] as String? ?? '',
+      question: json['question'] as String? ?? '',
+      category: json['category'] as String? ?? '',
+      answered: json['status'] == 'answered',
+      createdAt: json['createdAt'] as String? ?? '',
+      response: (json['response'] as String?)?.trim(),
+      responderName: json['responderName'] as String?,
+      answeredAt: json['answeredAt'] as String?,
+    );
+  }
+
+  final String id;
   final String question;
-  final String timeAgo;
+  final String category;
+  final bool answered;
+  final String createdAt;
+  final String? response;
+  final String? responderName;
+  final String? answeredAt;
+
+  String get timeAgo => _timeAgo(createdAt);
+}
+
+/// 'Just now', '5m ago', '3h ago', '2d ago', else 'Sep 11'.
+String _timeAgo(String iso) {
+  final t = DateTime.tryParse(iso)?.toLocal();
+  if (t == null) return '';
+  final d = DateTime.now().difference(t);
+  if (d.inMinutes < 1) return 'Just now';
+  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+  if (d.inHours < 24) return '${d.inHours}h ago';
+  if (d.inDays < 7) return '${d.inDays}d ago';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${months[t.month - 1]} ${t.day}';
 }
 
 /// Legal Queries tab — ask a question to senior advocates/mentors and track
@@ -34,21 +82,96 @@ class LegalQueriesScreen extends StatefulWidget {
   State<LegalQueriesScreen> createState() => _LegalQueriesScreenState();
 }
 
-class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
+class _LegalQueriesScreenState extends State<LegalQueriesScreen>
+    with WidgetsBindingObserver, RealtimeRefresh {
+  /// While any query is pending, My Queries polls the backend this often so
+  /// the ADVOK team's answer shows up without a manual refresh.
+  static const _pollInterval = Duration(seconds: 60);
+
   int _selectedTab = 1;
   int? _expanded;
   String? _category;
   final TextEditingController _questionController = TextEditingController();
 
-  /// Queries are loaded from the backend; holds locally submitted ones
-  /// until then.
-  final List<_LegalQuery> _queries = [];
+  /// The student's queries from the backend, newest first.
+  List<_LegalQuery> _queries = [];
+  bool _loading = true;
+  bool _submitting = false;
+  bool _refreshing = false;
+  String _loadError = '';
+  Timer? _pollTimer;
 
-  // All queries stay pending until the backend delivers responses.
-  int get _pendingCount => _queries.length;
+  int get _pendingCount => _queries.where((q) => !q.answered).length;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    listenRealtime({'queries'}, (_) => _loadQueries());
+    _loadQueries();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back to the app (e.g. from the notification) picks up new answers.
+    if (state == AppLifecycleState.resumed) _loadQueries();
+  }
+
+  Future<void> _loadQueries() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final result = await ApiService.fetchLegalQueries();
+      if (!mounted) return;
+      final next = result.map(_LegalQuery.fromApi).toList();
+      final wasLoaded = !_loading;
+      final previouslyAnswered = _queries.where((q) => q.answered).map((q) => q.id).toSet();
+      final newlyAnswered = next.where((q) => q.answered && !previouslyAnswered.contains(q.id)).toList();
+      setState(() {
+        _queries = next;
+        _loadError = '';
+        _loading = false;
+      });
+      // Announce answers that arrived while the screen was already loaded.
+      if (wasLoaded && newlyAnswered.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newlyAnswered.length == 1
+                  ? 'Your query "${newlyAnswered.first.question.length > 40 ? '${newlyAnswered.first.question.substring(0, 40)}…' : newlyAnswered.first.question}" was answered.'
+                  : '${newlyAnswered.length} of your queries were answered.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      _syncPolling();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// Polls while something is pending; stops as soon as everything is answered.
+  void _syncPolling() {
+    final needsPolling = _queries.any((q) => !q.answered);
+    if (needsPolling && _pollTimer == null) {
+      _pollTimer = Timer.periodic(_pollInterval, (_) => _loadQueries());
+    } else if (!needsPolling && _pollTimer != null) {
+      _pollTimer!.cancel();
+      _pollTimer = null;
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
     _questionController.dispose();
     super.dispose();
   }
@@ -121,7 +244,10 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
   Widget _buildTab(String label, int index) {
     final selected = _selectedTab == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedTab = index),
+      onTap: () {
+        setState(() => _selectedTab = index);
+        if (index == 1) _loadQueries();
+      },
       child: Container(
         height: 37,
         decoration: BoxDecoration(
@@ -148,14 +274,34 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
   // ---------------------------------------------------------------- queries
 
   Widget _buildQueriesTab() {
-    if (_queries.isEmpty) {
-      return _buildEmptyState();
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-      itemCount: _queries.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _buildQueryCard(index),
+    return RefreshIndicator(
+      onRefresh: _loadQueries,
+      child: _queries.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                if (_loadError.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Text(
+                      _loadError,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
+                    ),
+                  ),
+                _buildEmptyState(),
+              ],
+            )
+          : ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              itemCount: _queries.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) => _buildQueryCard(index),
+            ),
     );
   }
 
@@ -263,14 +409,19 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            _buildStatusChip(false),
+                            _buildStatusChip(query.answered),
                             const SizedBox(width: 8),
-                            Text(
-                              query.timeAgo,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                height: 1.5,
-                                color: AppColors.textGrey,
+                            Flexible(
+                              child: Text(
+                                [query.category, query.timeAgo]
+                                    .where((s) => s.isNotEmpty)
+                                    .join(' · '),
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  height: 1.5,
+                                  color: AppColors.textGrey,
+                                ),
                               ),
                             ),
                           ],
@@ -303,16 +454,41 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
                 border: Border(top: BorderSide(color: AppColors.divider)),
               ),
               padding: const EdgeInsets.all(16),
-              child: Text(
-                'Awaiting response — '
-                '${CountryCatalog.terms.seniorTitle.toLowerCase()}s '
-                'typically reply within 24 hours.',
-                style: const TextStyle(
-                  fontSize: 13,
-                  height: 19.5 / 13,
-                  color: AppColors.textGrey555,
-                ),
-              ),
+              child: query.answered && (query.response ?? '').isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Response from ${query.responderName ?? 'ADVOK Legal Team'}'
+                          '${query.answeredAt != null ? ' · ${_timeAgo(query.answeredAt!)}' : ''}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                            color: AppColors.textGrey555,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          query.response!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 19.5 / 13,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      'Awaiting response — '
+                      '${CountryCatalog.terms.seniorTitle.toLowerCase()}s '
+                      'typically reply within 24 hours.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 19.5 / 13,
+                        color: AppColors.textGrey555,
+                      ),
+                    ),
             ),
         ],
       ),
@@ -693,8 +869,9 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
   }
 
   Widget _buildSubmitButton() {
-    final enabled =
-        _category != null && _questionController.text.trim().isNotEmpty;
+    final enabled = !_submitting &&
+        _category != null &&
+        _questionController.text.trim().isNotEmpty;
     return Opacity(
       opacity: enabled ? 1 : 0.4,
       child: SizedBox(
@@ -727,9 +904,9 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Submit Query',
-                    style: TextStyle(
+                  Text(
+                    _submitting ? 'Submitting…' : 'Submit Query',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       letterSpacing: -0.31,
@@ -745,25 +922,36 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen> {
     );
   }
 
-  void _submitQuery() {
-    setState(() {
-      _queries.insert(
-        0,
-        _LegalQuery(
-          question: _questionController.text.trim(),
-          timeAgo: 'Just now',
+  Future<void> _submitQuery() async {
+    if (_submitting || _category == null) return;
+    setState(() => _submitting = true);
+    try {
+      final json = await ApiService.createLegalQuery(
+        category: _category!,
+        question: _questionController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _queries.insert(0, _LegalQuery.fromApi(json));
+        _category = null;
+        _questionController.clear();
+        _selectedTab = 1;
+        _expanded = null;
+      });
+      _syncPolling();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Query submitted — expect a response within 24 hours.'),
+          behavior: SnackBarBehavior.floating,
         ),
       );
-      _category = null;
-      _questionController.clear();
-      _selectedTab = 1;
-      _expanded = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Query submitted — expect a response within 24 hours.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 }

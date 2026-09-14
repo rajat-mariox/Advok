@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/Responsive/responsive.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
@@ -31,7 +32,7 @@ class AdvocateProfileScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildActionButtons(),
+                    _buildActionButtons(context),
                     const SizedBox(height: 20),
                     _buildStats(),
                     const SizedBox(height: 20),
@@ -213,7 +214,9 @@ class AdvocateProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  advocate.specialty,
+                  advocate.firmName.isNotEmpty
+                      ? '${advocate.specialty} · ${advocate.firmName}'
+                      : advocate.specialty,
                   style: const TextStyle(
                     fontSize: 14,
                     height: 20 / 14,
@@ -248,47 +251,46 @@ class AdvocateProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons() {
-    return Row(
-      children: const [
-        Expanded(
-          child: _ActionButton(
-            icon: 'assets/icons/ic_phone.svg',
-            label: 'Call',
-            badgeColor: Color(0x212A2A2A),
-          ),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: _ActionButton(
-            icon: 'assets/icons/ic_video.svg',
-            label: 'Video',
-            badgeColor: Color(0x21333333),
-          ),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: _ActionButton(
-            icon: 'assets/icons/ic_qa_chat.svg',
-            label: 'Message',
-            badgeColor: Color(0x21444444),
-          ),
-        ),
-      ],
+  /// Consultations are voice calls booked through ADVOK, so the only action
+  /// here is the call itself — it opens the same booking flow as the bottom
+  /// button. Chat opens on its own once the attorney accepts.
+  Widget _buildActionButtons(BuildContext context) {
+    return _ActionButton(
+      icon: 'assets/icons/ic_phone.svg',
+      label: 'Voice Call',
+      subtitle: 'Book a voice consultation',
+      badgeColor: const Color(0x212A2A2A),
+      onTap: () => _openBooking(context),
+    );
+  }
+
+  void _openBooking(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConsultationTypeScreen(advocate: advocate),
+      ),
     );
   }
 
   Widget _buildStats() {
     return Row(
       children: [
-        Expanded(child: _StatCard(value: advocate.cases, label: 'Cases')),
+        Expanded(
+          child: _StatCard(
+            value: '${advocate.caseCount}',
+            label: advocate.caseCount == 1 ? 'Case' : 'Cases',
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: _StatCard(value: advocate.experience, label: 'Experience'),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _StatCard(value: advocate.rating ?? '—', label: 'Rating'),
+          child: _StatCard(
+            value: '${advocate.consultationCount}',
+            label: 'Consultations',
+          ),
         ),
       ],
     );
@@ -319,29 +321,59 @@ class AdvocateProfileScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text.rich(
-                  TextSpan(
-                    children: [
+                // Fees are set platform-wide from the admin panel (voice
+                // consultation rate), not per attorney, so read them live.
+                FutureBuilder<Map<String, double>>(
+                  future: ApiService.fetchConsultationPricing(),
+                  builder: (context, snapshot) {
+                    // Firm attorneys carry their firm's rate from the
+                    // backend; solo attorneys use the platform rate.
+                    final amount = advocate.consultationFee ??
+                        snapshot.data?['phone_call'];
+                    final label = amount == null
+                        ? (snapshot.connectionState == ConnectionState.done
+                            ? '—'
+                            : '…')
+                        : amount == amount.roundToDouble()
+                            ? '\$${amount.toStringAsFixed(0)}'
+                            : '\$${amount.toStringAsFixed(2)}';
+                    return Text.rich(
                       TextSpan(
-                        text: advocate.price.isEmpty ? '—' : advocate.price,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          height: 39 / 26,
-                          letterSpacing: 0.22,
-                          color: AppColors.textPrimary,
-                        ),
+                        children: [
+                          TextSpan(
+                            text: label,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              height: 39 / 26,
+                              letterSpacing: 0.22,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: ' / voice consultation',
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 20 / 14,
+                              letterSpacing: -0.15,
+                              color: AppColors.textGrey555,
+                            ),
+                          ),
+                        ],
                       ),
-                      const TextSpan(
-                        text: '/hr',
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 20 / 14,
-                          letterSpacing: -0.15,
-                          color: AppColors.textGrey555,
-                        ),
-                      ),
-                    ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  advocate.firmName.isNotEmpty
+                      ? "${advocate.firmName}'s rate · 60 min call · platform "
+                          'fee and tax shown at checkout'
+                      : '60 min call · platform fee and tax shown at checkout',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    height: 16 / 11.5,
+                    color: AppColors.textGrey,
                   ),
                 ),
               ],
@@ -389,45 +421,79 @@ class _ActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.badgeColor,
+    this.subtitle,
+    this.onTap,
   });
 
   final String icon;
   final String label;
+  final String? subtitle;
   final Color badgeColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 13),
-      decoration: BoxDecoration(
-        color: AppColors.fillGrey,
+    return Material(
+      color: AppColors.fillGrey,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderGrey),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: badgeColor,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Center(
-              child: SvgPicture.asset(icon, width: 18, height: 18),
-            ),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.borderGrey),
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 16 / 12,
-              color: AppColors.textGrey555,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: badgeColor,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Center(
+                  child: SvgPicture.asset(icon, width: 18, height: 18),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        height: 18 / 13,
+                        letterSpacing: -0.08,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          height: 16 / 11.5,
+                          color: AppColors.textGrey555,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              SvgPicture.asset(
+                'assets/icons/ic_chevron_right_grey.svg',
+                width: 14,
+                height: 14,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

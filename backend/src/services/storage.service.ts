@@ -36,3 +36,33 @@ export async function storePhoto(photo: string, folder: string): Promise<string>
   const base = S3_PUBLIC_URL || `https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com`;
   return `${base}/${key}`;
 }
+
+const FILE_DATA_URL_RE = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,(.+)$/i;
+
+/**
+ * Like [storePhoto] but for any file type (case documents: PDFs, images,
+ * Word files, …). With S3 configured the file is uploaded and its URL
+ * returned; otherwise the data URL is stored as-is (local dev).
+ */
+export async function storeFile(dataUrl: string, folder: string): Promise<string> {
+  if (!s3) return dataUrl;
+  const match = FILE_DATA_URL_RE.exec(dataUrl);
+  if (!match) return dataUrl;
+
+  const [, contentType, base64] = match;
+  const subtype = contentType.split('/')[1] ?? 'bin';
+  const ext = subtype.replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '').slice(0, 10) || 'bin';
+  const key = `${folder}/${randomUUID()}.${ext}`;
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: Buffer.from(base64, 'base64'),
+      ContentType: contentType,
+    }),
+  );
+
+  const base = S3_PUBLIC_URL || `https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com`;
+  return `${base}/${key}`;
+}

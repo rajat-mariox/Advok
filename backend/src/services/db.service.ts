@@ -16,8 +16,11 @@ import {
   SEED_ADMIN_NAME,
   SEED_ADMIN_PASSWORD,
 } from '../config';
-import type { DbShape, User } from '../models';
+import type { AdvocateProfile, AppSettings, DbShape, User } from '../models';
 import { DEFAULT_CMS_PAGES } from '../models/cms.seed';
+import { DEFAULT_CONSULTATION_PRICING } from '../models/settings.model';
+import { DEFAULT_SUPPORT_CONTACT } from '../models/support.model';
+import { DEFAULT_AI_SUGGESTIONS } from '../models/settings.model';
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -31,6 +34,15 @@ const COLLECTIONS = [
   { name: 'otps', field: 'otps', key: 'phone' },
   { name: 'cmsPages', field: 'cmsPages', key: 'slug' },
   { name: 'bookings', field: 'bookings', key: 'id' },
+  { name: 'relationships', field: 'relationships', key: 'id' },
+  { name: 'cases', field: 'cases', key: 'id' },
+  { name: 'messages', field: 'messages', key: 'id' },
+  { name: 'notifications', field: 'notifications', key: 'id' },
+  { name: 'settings', field: 'settings', key: 'id' },
+  { name: 'supportTickets', field: 'supportTickets', key: 'id' },
+  { name: 'caseStudies', field: 'caseStudies', key: 'id' },
+  { name: 'legalTerms', field: 'legalTerms', key: 'slug' },
+  { name: 'legalQueries', field: 'legalQueries', key: 'id' },
 ] as const;
 
 function loadFromFile(): DbShape {
@@ -77,7 +89,130 @@ export async function initDb(): Promise<void> {
 
   seedAdmin(db);
   seedCmsPages(db);
+  seedSettings(db);
+  migrateConsultationCards(db);
+  dropFirmClientThreads(db);
   persist();
+}
+
+/** Creates the global settings record with default pricing when missing. */
+function seedSettings(state: DbShape): void {
+  state.settings ??= [];
+  if (!state.settings.some((s) => s.id === 'global')) {
+    state.settings.push({
+      id: 'global',
+      consultationPricing: { ...DEFAULT_CONSULTATION_PRICING },
+      support: { ...DEFAULT_SUPPORT_CONTACT },
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  // Older settings records predate the support block.
+  for (const s of state.settings) {
+    s.support ??= { ...DEFAULT_SUPPORT_CONTACT };
+    s.consultationPricing = { ...DEFAULT_CONSULTATION_PRICING, ...s.consultationPricing };
+    s.aiSuggestions ??= DEFAULT_AI_SUGGESTIONS.map((x) => ({ ...x }));
+  }
+}
+
+/** The global settings record (seeded at boot, so always present). */
+export function getSettings(): AppSettings {
+  const state = getDb();
+  state.settings ??= [];
+  let settings = state.settings.find((s) => s.id === 'global');
+  if (!settings) {
+    settings = {
+      id: 'global',
+      consultationPricing: { ...DEFAULT_CONSULTATION_PRICING },
+      support: { ...DEFAULT_SUPPORT_CONTACT },
+      updatedAt: new Date().toISOString(),
+    };
+    state.settings.push(settings);
+  }
+  settings.support ??= { ...DEFAULT_SUPPORT_CONTACT };
+  settings.consultationPricing = { ...DEFAULT_CONSULTATION_PRICING, ...settings.consultationPricing };
+  settings.aiSuggestions ??= DEFAULT_AI_SUGGESTIONS.map((x) => ({ ...x }));
+  return settings;
+}
+
+/**
+ * Upgrades consultation-accepted chat cards written in the old
+ * client-details format to the current attorney-contact format (the card
+ * the client uses to call their attorney). One-time data fix for messages
+ * created before the card was flipped; a no-op afterwards.
+ */
+/**
+ * Firms never chat with clients (their assigned attorney does). Removes
+ * system messages written between a law firm and a client before that rule
+ * existed, so neither side sees a phantom thread.
+ */
+function dropFirmClientThreads(state: DbShape): void {
+  if (!state.messages?.length) return;
+  const role = new Map(state.users.map((u) => [u.id, u.role]));
+  const before = state.messages.length;
+  state.messages = state.messages.filter((m) => {
+    const roles = new Set([role.get(m.fromId), role.get(m.toId)]);
+    return !(roles.has('law_firm') && roles.has('client'));
+  });
+  const dropped = before - state.messages.length;
+  if (dropped) console.log(`Removed ${dropped} firm↔client chat message(s)`);
+}
+
+function migrateConsultationCards(state: DbShape): void {
+  for (const m of state.messages ?? []) {
+    let meta = m.meta as Record<string, unknown> | undefined;
+    if (!meta || meta.kind !== 'consultation_accepted') continue;
+
+    if (!meta.attorneyName) {
+      // Old cards were sent client → advocate, so the advocate is the
+      // recipient. Flip the direction and swap in the attorney's details.
+      const advocate = state.users.find(
+        (u) => u.id === m.toId && u.role === 'advocate',
+      );
+      if (!advocate) continue;
+      const ap = advocate.profile as AdvocateProfile | undefined;
+      const name = ap?.professional.fullName ?? 'Your attorney';
+      const clientId = m.fromId;
+      m.fromId = advocate.id;
+      m.toId = clientId;
+      m.text =
+        `Consultation confirmed — contact ${name}: ` +
+        `${advocate.phone ?? 'in the app'}.`;
+      m.meta = {
+        kind: 'consultation_accepted',
+        attorneyName: name,
+        attorneyPhone: advocate.phone ?? '',
+        attorneyEmail: ap?.professional.email ?? '',
+        attorneyPhoto: ap?.photo ?? '',
+        consultationType: meta.consultationType ?? '',
+        date: meta.date ?? '',
+        time: meta.time ?? '',
+        amount: meta.amount ?? 0,
+      };
+      meta = m.meta as Record<string, unknown>;
+      delete m.readAt;
+      console.log(`Migrated consultation card ${m.id} to attorney-contact format`);
+    }
+
+    // Repair self-addressed cards (advocate → advocate): recover the client
+    // from the matching booking, or the advocate's only relationship.
+    if (m.fromId === m.toId) {
+      const booking = (state.bookings ?? []).find(
+        (b) =>
+          b.advocateId === m.fromId &&
+          b.date === meta!.date &&
+          b.time === meta!.time,
+      );
+      const rels = (state.relationships ?? []).filter(
+        (r) => r.advocateId === m.fromId,
+      );
+      const clientId = booking?.clientId ?? (rels.length === 1 ? rels[0].clientId : null);
+      if (clientId) {
+        m.toId = clientId;
+        delete m.readAt;
+        console.log(`Repaired self-addressed consultation card ${m.id}`);
+      }
+    }
+  }
 }
 
 /** Adds any default CMS page missing from the store (older data sets). */

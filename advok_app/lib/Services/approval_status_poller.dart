@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'api_service.dart';
+import 'realtime_service.dart';
 
 /// Polls the backend while a registration is pending so the UI can unlock
 /// itself the moment the admin approves (or show the rejection reason).
@@ -12,15 +13,21 @@ class ApprovalStatusPoller {
   final void Function(String status, String? rejectionReason) onChanged;
 
   Timer? _timer;
+  StreamSubscription<RealtimeEvent>? _live;
 
   void start() {
     _check();
-    _timer = Timer.periodic(const Duration(seconds: 8), (_) => _check());
+    // The admin's decision arrives live; the poll is only a fallback.
+    _live = Realtime.instance.on({'account'}).listen((_) => _check());
+    Realtime.instance.ensureConnected();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _check());
   }
 
   void stop() {
     _timer?.cancel();
     _timer = null;
+    _live?.cancel();
+    _live = null;
   }
 
   Future<void> _check() async {

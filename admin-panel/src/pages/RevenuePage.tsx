@@ -11,7 +11,7 @@ export default function RevenuePage() {
       <PageHeader
         eyebrow="Operations"
         title="Revenue"
-        subtitle="Platform earnings, fees and advocate payouts."
+        subtitle="Platform earnings, fees and attorney payouts."
       />
 
       <div className="grid-stats" style={{ marginBottom: 22 }}>
@@ -46,12 +46,12 @@ export default function RevenuePage() {
         {/* Payouts table */}
         <div className="table-card">
           <div className="row" style={{ padding: '16px 16px 12px' }}>
-            <span className="section-title">Advocate Payouts</span>
+            <span className="section-title">Attorney Payouts</span>
           </div>
           <table className="data">
             <thead>
               <tr>
-                <th>Advocate</th>
+                <th>Attorney</th>
                 <th>Gross</th>
                 <th>Platform Cut</th>
                 <th>Net Payout</th>

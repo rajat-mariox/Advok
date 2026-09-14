@@ -33,8 +33,8 @@ List<_FirmLawyer> _lawyersFromSession() {
     for (final entry in raw)
       if (entry is Map)
         _FirmLawyer(
-          name: _entryField(entry, 'fullName', 'Unnamed Lawyer'),
-          designation: _entryField(entry, 'designation', 'Lawyer'),
+          name: _entryField(entry, 'fullName', 'Unnamed Attorney'),
+          designation: _entryField(entry, 'designation', 'Attorney'),
           specialty: _entryField(entry, 'expertise', 'General Practice'),
           caseCount: 0,
           since: _experienceLabel(entry),
@@ -109,7 +109,7 @@ class FirmLawyersScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'No lawyers yet',
+            'No attorneys yet',
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
@@ -118,7 +118,7 @@ class FirmLawyersScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Lawyers added during onboarding will appear here.',
+            'Attorneys added during onboarding will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,
@@ -141,7 +141,7 @@ class FirmLawyersScreen extends StatelessWidget {
           CircleBackButton(onTap: onBack),
           const Expanded(
             child: Text(
-              'Our Lawyers',
+              'Our Attorneys',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 17,

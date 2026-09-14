@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 import 'select_datetime_screen.dart';
@@ -21,26 +22,30 @@ class ConsultationType {
   final String price;
 }
 
-const List<ConsultationType> _types = [
-  ConsultationType(
-    icon: 'assets/icons/ic_video.svg',
-    title: 'Video Call',
-    subtitle: 'Online via ADVOK',
-    price: r'$120',
-  ),
-  ConsultationType(
-    icon: 'assets/icons/ic_phone.svg',
-    title: 'Phone Call',
-    subtitle: 'Audio consultation',
-    price: r'$90',
-  ),
-  ConsultationType(
-    icon: 'assets/icons/ic_office.svg',
-    title: 'Office Visit',
-    subtitle: 'In-person meeting',
-    price: r'$150',
-  ),
-];
+/// Fallback fee when the pricing settings can't be loaded — same default the
+/// backend seeds. The live value comes from the admin panel.
+const Map<String, double> _defaultPricing = {'phone_call': 90};
+
+String _priceLabel(double amount) => amount == amount.roundToDouble()
+    ? '\$${amount.toStringAsFixed(0)}'
+    : '\$${amount.toStringAsFixed(2)}';
+
+/// Clients consult by voice only — video calls and office visits are not
+/// offered on the platform.
+/// [providerFee] wins when the provider carries its own rate (law firms and
+/// their attorneys); otherwise the platform attorney rate applies.
+List<ConsultationType> _buildTypes(
+  Map<String, double> pricing, [
+  double? providerFee,
+]) =>
+    [
+      ConsultationType(
+        icon: 'assets/icons/ic_phone.svg',
+        title: 'Phone Call',
+        subtitle: 'Voice consultation',
+        price: _priceLabel(providerFee ?? pricing['phone_call'] ?? 90),
+      ),
+    ];
 
 class ConsultationTypeScreen extends StatefulWidget {
   const ConsultationTypeScreen({super.key, required this.advocate});
@@ -53,6 +58,28 @@ class ConsultationTypeScreen extends StatefulWidget {
 
 class _ConsultationTypeScreenState extends State<ConsultationTypeScreen> {
   int _selected = 0;
+
+  /// Fees set from the admin panel; defaults until the fetch answers.
+  late List<ConsultationType> _types =
+      _buildTypes(_defaultPricing, widget.advocate.consultationFee);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPricing();
+  }
+
+  Future<void> _loadPricing() async {
+    try {
+      final pricing = await ApiService.fetchConsultationPricing();
+      if (!mounted) return;
+      setState(
+        () => _types = _buildTypes(pricing, widget.advocate.consultationFee),
+      );
+    } catch (_) {
+      // Backend unreachable — the default fees stay.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

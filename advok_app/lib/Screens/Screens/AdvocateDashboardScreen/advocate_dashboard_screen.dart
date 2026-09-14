@@ -5,14 +5,15 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
 import '../AdvocateCasesScreen/advocate_cases_screen.dart';
 import '../AdvocateCasesScreen/case_details_screen.dart';
-import '../AdvocateClientsScreen/client_directory.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart'
     show InitialsAvatar, decodePhotoDataUrl;
 import '../MessagesScreen/chat_screen.dart';
+import '../NotificationScreen/notification_screen.dart';
 
 class _ScheduleEntry {
   const _ScheduleEntry({
@@ -20,6 +21,7 @@ class _ScheduleEntry {
     required this.title,
     required this.subtitle,
     this.status,
+    this.clientId,
     // ignore: unused_element_parameter — reserved for blocked-off slots.
     this.blocked = false,
   });
@@ -28,6 +30,9 @@ class _ScheduleEntry {
   final String title;
   final String subtitle;
   final String? status;
+
+  /// Backend user id of the client, for opening the chat.
+  final String? clientId;
   final bool blocked;
 }
 
@@ -47,43 +52,9 @@ class _Hearing {
   final String court;
 }
 
-/// A-08 sample rows for the US market: actual U.S. courts with their
-/// jurisdiction (per the design spec, replacing the earlier Indian-style
-/// "District/Sessions/High Court, NY" placeholders). Shown until hearings
-/// are backed by the API.
-const List<_Hearing> _usSampleHearings = [
-  _Hearing(
-    date: 'Aug 22',
-    time: '9:30 AM',
-    caseNumber: '1:26-cv-04812',
-    matter: 'Contract Dispute',
-    court: 'U.S. District Court, Southern District of New York',
-  ),
-  _Hearing(
-    date: 'Aug 26',
-    time: '11:00 AM',
-    caseNumber: '155602/2026',
-    matter: 'Commercial Lease Dispute',
-    court: 'New York Supreme Court, New York County',
-  ),
-  _Hearing(
-    date: 'Sep 3',
-    time: '2:15 PM',
-    caseNumber: 'F-08841-26',
-    matter: 'Custody Modification',
-    court: 'New York Family Court, Kings County',
-  ),
-];
-
-/// Upcoming hearings. US shows the sample court events above; other
-/// countries stay empty until hearings are backed by the API.
-List<_Hearing> get _hearings =>
-    CountryCatalog.selected.name == 'United States'
-        ? _usSampleHearings
-        : const [];
-
-/// A pending consultation request (an office visit waiting for the advocate
-/// to accept or decline), built from the backend's /bookings response.
+/// A pending consultation request (any consultation type waiting for the
+/// advocate to accept or decline), built from the backend's /bookings
+/// response.
 class _VisitRequest {
   const _VisitRequest({
     required this.id,
@@ -99,19 +70,6 @@ class _VisitRequest {
   final String timeAgo;
   final Uint8List? photoBytes;
 }
-
-/// Relative bar heights for the earnings chart, Jan–Jul. All zero until
-/// earnings are backed by the API.
-const List<double> _earningsBars = [0, 0, 0, 0, 0, 0, 0];
-const List<String> _earningsMonths = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-];
 
 class AdvocateDashboardScreen extends StatefulWidget {
   const AdvocateDashboardScreen({
@@ -130,24 +88,84 @@ class AdvocateDashboardScreen extends StatefulWidget {
       _AdvocateDashboardScreenState();
 }
 
-class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
+class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> with RealtimeRefresh {
   int _tab = 0;
 
-  static const List<String> _tabs = ['Today', 'Hearings', 'Tasks'];
+  List<String> get _tabs =>
+      ['Today', CountryCatalog.terms.hearingsLabel, 'Tasks'];
 
-  /// Incoming visit requests waiting for this advocate's answer.
+  /// Incoming consultation requests waiting for this advocate's answer.
   List<_VisitRequest> _pendingRequests = [];
 
   /// Today's confirmed appointments.
   List<_ScheduleEntry> _schedule = [];
 
+  /// This advocate's cases, from the backend.
+  List<AdvocateCase> _cases = [];
+
+  /// Confirmed-booking earnings per month for the last 7 months (oldest
+  /// first) and the all-time total, from the backend's /bookings.
+  List<double> _monthEarnings = List.filled(7, 0);
+  List<String> _monthEarningLabels = List.filled(7, '');
+  double _totalRevenue = 0;
+
   /// Ids the advocate is currently responding to (buttons disabled).
   final Set<String> _respondingIds = {};
+
+  /// Upcoming court events across this advocate's open cases, soonest first.
+  List<_Hearing> get _hearings {
+    final rows = [
+      for (final c in _cases)
+        if (c.nextHearingIso != null && c.status != CaseStatus.closed)
+          (
+            iso: c.nextHearingIso!,
+            hearing: _Hearing(
+              date: c.nextHearing!,
+              time: c.status.label,
+              caseNumber: c.number,
+              matter: c.title,
+              court: c.court,
+            ),
+          ),
+    ]..sort((a, b) => a.iso.compareTo(b.iso));
+    return [for (final r in rows) r.hearing];
+  }
+
+  String get _revenueLabel => '\$${_totalRevenue.toStringAsFixed(0)}';
+
+  /// This month's earnings and the growth vs last month, for the chart card.
+  double get _thisMonthEarnings =>
+      _monthEarnings.isEmpty ? 0 : _monthEarnings.last;
+
+  String get _monthGrowthLabel {
+    if (_monthEarnings.length < 2) return '+0%';
+    final last = _monthEarnings[_monthEarnings.length - 2];
+    if (last <= 0) return _thisMonthEarnings > 0 ? '+100%' : '+0%';
+    final pct = ((_thisMonthEarnings - last) / last * 100).round();
+    return '${pct >= 0 ? '+' : ''}$pct%';
+  }
 
   @override
   void initState() {
     super.initState();
+    listenRealtime({'bookings', 'cases', 'clients'}, (_) {
+      _loadBookings();
+      _loadCases();
+    });
     _loadBookings();
+    _loadCases();
+  }
+
+  Future<void> _loadCases() async {
+    try {
+      final result = await ApiService.fetchCases();
+      if (!mounted) return;
+      setState(() {
+        _cases = result.map(AdvocateCase.fromApi).toList();
+      });
+    } on ApiException {
+      // Dashboard still renders with its empty states.
+    }
   }
 
   static String _typeLabel(String kind) => switch (kind) {
@@ -185,12 +203,35 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
 
     final requests = <_VisitRequest>[];
     final schedule = <_ScheduleEntry>[];
+
+    // Earnings from confirmed consultations: all-time total plus the last
+    // 7 months for the chart (oldest first, current month last).
+    double totalRevenue = 0;
+    final monthEarnings = List<double>.filled(7, 0);
+    final monthLabels = <String>[];
+    final monthKeys = <String>[];
+    for (int i = 6; i >= 0; i--) {
+      final m = DateTime(now.year, now.month - i);
+      monthLabels.add(_monthLabels[m.month - 1]);
+      monthKeys.add('${m.year}-${m.month.toString().padLeft(2, '0')}');
+    }
+
     for (final b in result) {
       final status = b['status'] as String?;
       final kind = b['consultationType'] as String? ?? 'video_call';
       final name = b['clientName'] as String? ?? 'Client';
       final date = b['date'] as String? ?? '';
       final time = b['time'] as String? ?? '';
+      // Consultations booked through a law firm are billed to the firm, so
+      // they show in the firm's revenue, not the assigned attorney's.
+      final billedToMe = b['advocateId'] == Session.userId;
+      if (billedToMe && (status == 'confirmed' || status == 'completed')) {
+        final amount = (b['amount'] as num?)?.toDouble() ?? 0;
+        totalRevenue += amount;
+        final key = date.length >= 7 ? date.substring(0, 7) : '';
+        final slot = monthKeys.indexOf(key);
+        if (slot >= 0) monthEarnings[slot] += amount;
+      }
       if (status == 'pending') {
         final day = DateTime.tryParse(date);
         final dateLabel = day == null
@@ -204,17 +245,28 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
           photoBytes: decodePhotoDataUrl(b['clientPhoto'] as String?),
         ));
       } else if (status == 'confirmed' && date == todayIso) {
+        // Assigned by a law firm: say so, keep the type last (the row
+        // reads the matter from the last segment).
+        final viaFirm = b['advocateId'] != Session.userId
+            ? (b['firmName'] as String? ?? '').trim()
+            : '';
         schedule.add(_ScheduleEntry(
           time: time,
           title: name,
-          subtitle: _typeLabel(kind),
+          subtitle: viaFirm.isEmpty
+              ? _typeLabel(kind)
+              : 'via $viaFirm · ${_typeLabel(kind)}',
           status: 'Confirmed',
+          clientId: b['clientId'] as String?,
         ));
       }
     }
     setState(() {
       _pendingRequests = requests;
       _schedule = schedule;
+      _totalRevenue = totalRevenue;
+      _monthEarnings = monthEarnings;
+      _monthEarningLabels = monthLabels;
     });
   }
 
@@ -226,11 +278,16 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
     setState(() {});
     try {
       await ApiService.respondToBooking(request.id, accept: accept);
-      if (accept) {
-        ClientDirectory.instance.addFromAcceptedRequest(
-          name: request.name,
-          avatar: '',
-          matter: request.matter,
+      if (accept && mounted) {
+        // Backend created the client relationship and texted the client
+        // this advocate's contact details.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${request.name} added to My Clients — your contact details '
+              'were shared with them.',
+            ),
+          ),
         );
       }
       await _loadBookings();
@@ -389,7 +446,11 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
               onTap: () {
-                // TODO: Open notifications once that screen is designed.
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationScreen(),
+                  ),
+                );
               },
               child: SizedBox(
                 width: 40,
@@ -422,10 +483,10 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: _StatCard(
               icon: 'assets/icons/ic_stat_revenue.svg',
-              value: r'$0',
+              value: _revenueLabel,
               label: 'Revenue',
             ),
           ),
@@ -433,7 +494,7 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
           Expanded(
             child: _StatCard(
               icon: 'assets/icons/ic_stat_cases.svg',
-              value: '${advocateCases.length}',
+              value: '${_cases.length}',
               label: 'Cases',
             ),
           ),
@@ -713,7 +774,11 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                           borderRadius: BorderRadius.circular(16),
                           onTap: () {
                             Navigator.of(sheetContext).pop();
-                            _openClientChat(entry.title, matter: matter);
+                            _openClientChat(
+                              entry.title,
+                              matter: matter,
+                              peerId: entry.clientId,
+                            );
                           },
                           child: SizedBox(
                             height: 48,
@@ -762,7 +827,7 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                             borderRadius: BorderRadius.circular(16),
                             onTap: () {
                               Navigator.of(sheetContext).pop();
-                              final matches = advocateCases
+                              final matches = _cases
                                   .where((c) => c.title == matter)
                                   .toList();
                               if (matches.isEmpty) return;
@@ -818,7 +883,7 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
 
   void _openCase(String caseNumber) {
     final matches =
-        advocateCases.where((c) => c.number == caseNumber).toList();
+        _cases.where((c) => c.number == caseNumber).toList();
     if (matches.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -827,15 +892,14 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
     );
   }
 
-  void _openClientChat(String name, {String? matter}) {
-    final client = ClientDirectory.instance.findByName(name);
+  void _openClientChat(String name, {String? matter, String? peerId}) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
           name: name,
-          image: client?.avatar,
+          peerId: peerId,
           online: true,
-          specialty: matter ?? client?.matter,
+          specialty: matter,
         ),
       ),
     );
@@ -848,9 +912,9 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Upcoming Hearings',
-              style: TextStyle(
+            Text(
+              'Upcoming ${CountryCatalog.terms.hearingsLabel}',
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
                 height: 1.5,
@@ -875,9 +939,10 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
           const Center(
             child: _EmptyState(
               icon: 'assets/icons/ic_judge.svg',
-              title: 'No hearings scheduled',
+              title: 'No court events scheduled',
               message:
-                  'Upcoming hearings will appear here once case management goes live.',
+                  'Court events appear here when a case has its next '
+                  'court event set.',
             ),
           )
         else
@@ -1031,13 +1096,14 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(18),
                         onTap: () {
-                          final matches = advocateCases
+                          final matches = _cases
                               .where((c) => c.number == hearing.caseNumber)
                               .toList();
                           if (matches.isEmpty) return;
                           _openClientChat(
                             matches.first.client,
                             matter: matches.first.title,
+                            peerId: matches.first.clientId,
                           );
                         },
                         child: const SizedBox(
@@ -1125,6 +1191,10 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
   }
 
   Widget _buildEarningsCard() {
+    final maxEarning = _monthEarnings.fold<double>(0, (m, e) => e > m ? e : m);
+    final bars = [
+      for (final e in _monthEarnings) maxEarning > 0 ? e / maxEarning * 80 : 0.0,
+    ];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1139,13 +1209,13 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (int i = 0; i < _earningsBars.length; i++) ...[
+                for (int i = 0; i < bars.length; i++) ...[
                   if (i > 0) const SizedBox(width: 6),
                   Expanded(
                     child: Container(
-                      height: _earningsBars[i],
+                      height: bars[i],
                       decoration: BoxDecoration(
-                        color: i == _earningsBars.length - 1
+                        color: i == bars.length - 1
                             ? AppColors.textPrimary
                             : AppColors.progressTrack,
                         borderRadius: const BorderRadius.vertical(
@@ -1162,15 +1232,15 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (int i = 0; i < _earningsMonths.length; i++)
+              for (int i = 0; i < _monthEarningLabels.length; i++)
                 Text(
-                  _earningsMonths[i],
+                  _monthEarningLabels[i],
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w500,
                     height: 1.5,
                     letterSpacing: 0.17,
-                    color: i == _earningsMonths.length - 1
+                    color: i == _monthEarningLabels.length - 1
                         ? AppColors.textPrimary
                         : AppColors.textGrey,
                   ),
@@ -1189,8 +1259,8 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
+                  children: [
+                    const Text(
                       'This month',
                       style: TextStyle(
                         fontSize: 11,
@@ -1200,8 +1270,8 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                       ),
                     ),
                     Text(
-                      r'$0',
-                      style: TextStyle(
+                      '\$${_thisMonthEarnings.toStringAsFixed(0)}',
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         height: 1.5,
@@ -1232,9 +1302,9 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> {
                             height: 11,
                           ),
                           const SizedBox(width: 4),
-                          const Text(
-                            '+0%',
-                            style: TextStyle(
+                          Text(
+                            _monthGrowthLabel,
+                            style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               height: 1.5,

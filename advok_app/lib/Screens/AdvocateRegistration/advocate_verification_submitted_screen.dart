@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../AppNavigation/advocate_nav_screen.dart';
+import '../../Routes/app_routes.dart';
 import '../../Services/approval_status_poller.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
-import '../RegistrationStatus/registration_rejected_screen.dart';
 
 /// Shown after the 5-step advocate registration is submitted. Polls the
 /// backend and keeps the dashboard locked until the admin approves; a
@@ -43,14 +42,10 @@ class _AdvocateVerificationSubmittedScreenState
   void _onStatusChanged(String status, String? rejectionReason) {
     if (!mounted) return;
     if (status == 'rejected') {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => RegistrationRejectedScreen(
-            role: 'advocate',
-            reason: rejectionReason,
-          ),
-        ),
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.registrationRejected,
         (route) => false,
+        arguments: StatusArgs(role: 'advocate', reason: rejectionReason),
       );
       return;
     }
@@ -147,11 +142,11 @@ class _AdvocateVerificationSubmittedScreenState
           child: Text(
             _approved
                 ? 'Your ${CountryCatalog.terms.licenseLabel.toLowerCase()} '
-                    'has been verified and your practice is live. Clients can '
-                    'now find and book you.'
+                      'has been verified and your practice is live. Clients can '
+                      'now find and book you.'
                 : 'Your profile has been sent for review. Our team verifies '
-                    'your ${CountryCatalog.terms.licenseLabel.toLowerCase()} '
-                    'before your practice goes live to clients.',
+                      'your ${CountryCatalog.terms.licenseLabel.toLowerCase()} '
+                      'before your practice goes live to clients.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -241,7 +236,10 @@ class _AdvocateVerificationSubmittedScreenState
           const SizedBox(height: 12),
           _AccessRow('Client Requests & Bookings', unlocked: _approved),
           _AccessRow('Case Management', unlocked: _approved),
-          _AccessRow('Hearing Schedule', unlocked: _approved),
+          _AccessRow(
+            '${CountryCatalog.terms.hearingStatusLabel} Schedule',
+            unlocked: _approved,
+          ),
           _AccessRow(
             'Verified ${CountryCatalog.terms.lawyerSingular} Badge',
             unlocked: _approved,
@@ -273,10 +271,8 @@ class _AdvocateVerificationSubmittedScreenState
               borderRadius: BorderRadius.circular(14),
               onTap: _approved
                   ? () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const AdvocateNavScreen(),
-                        ),
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        AppRoutes.advocateHome,
                         (route) => false,
                       );
                     }
@@ -399,8 +395,7 @@ class _TimelineStep extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   height: 20 / 14,
                   letterSpacing: -0.15,
-                  color:
-                      upcoming ? AppColors.textGrey : AppColors.textPrimary,
+                  color: upcoming ? AppColors.textGrey : AppColors.textPrimary,
                 ),
               ),
             ),

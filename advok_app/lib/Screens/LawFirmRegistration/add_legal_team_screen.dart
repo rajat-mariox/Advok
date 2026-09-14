@@ -24,18 +24,29 @@ List<String> get _designations => [
     ];
 
 const List<String> _expertiseOptions = [
-  'Criminal',
-  'Civil',
+  'Criminal Defense',
+  'Civil Litigation',
   'Corporate',
   'Family',
   'Tax',
-  'Cyber Crime',
-  'Property',
+  'Cyber Law',
+  'Real Estate',
   'Immigration',
-  'Labour & Employment',
+  'Labor & Employment',
 ];
 
-/// Step 2 of the law-firm registration flow: add the lawyers at the firm.
+/// States whose bar can license an attorney (from the country catalog).
+List<String> get _barStates => CountryCatalog.selected.states;
+
+/// Active · Inactive · Pending Admission … (falls back for non-US).
+List<String> get _licenseStatuses {
+  final list = CountryCatalog.terms.licenseStatuses;
+  return list.isEmpty ? const ['Active', 'Inactive'] : list;
+}
+
+/// Step 2 of the law-firm registration flow: add the attorneys at the firm.
+/// The firm vouches for each attorney; the admin sees bar state, bar number
+/// and license status to double-check against state bar records.
 class AddLegalTeamScreen extends StatefulWidget {
   const AddLegalTeamScreen({super.key, required this.registrationData});
 
@@ -48,14 +59,18 @@ class AddLegalTeamScreen extends StatefulWidget {
 class _LawyerEntry {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
   final TextEditingController barLicenseController = TextEditingController();
   final TextEditingController yearsController = TextEditingController();
   String? designation;
+  String? barState;
+  String? licenseStatus;
   final Set<String> expertise = <String>{};
 
   void dispose() {
     nameController.dispose();
     phoneController.dispose();
+    emailController.dispose();
     barLicenseController.dispose();
     yearsController.dispose();
   }
@@ -86,7 +101,10 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
           (l) => {
             'fullName': l.nameController.text.trim(),
             'phone': l.phoneController.text.trim(),
+            'email': l.emailController.text.trim(),
             'barLicense': l.barLicenseController.text.trim(),
+            'barState': l.barState ?? '',
+            'licenseStatus': l.licenseStatus ?? '',
             'yearsExperience': l.yearsController.text.trim(),
             'designation': l.designation ?? '',
             'expertise': l.expertise.toList(),
@@ -100,6 +118,8 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
         'foundedYear': data.foundedYear,
         'contactPerson': data.contactPersonName,
         'logoFileName': data.logoFileName ?? '',
+        if (data.logoDataUrl != null && data.logoDataUrl!.isNotEmpty)
+          'photo': data.logoDataUrl,
         'officialEmail': data.officialEmail,
         'mainPhone': data.mainPhone,
         'receptionNumber': data.receptionNumber ?? '',
@@ -147,7 +167,7 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Add the lawyers at your firm. You can edit or add more after registration.',
+          'Add the attorneys at your firm. You can edit or add more after registration.',
           style: TextStyle(
             fontSize: 14,
             height: 20 / 14,
@@ -156,11 +176,11 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        const _FieldLabel('Total Lawyers at Firm'),
+        const _FieldLabel('Total Attorneys at Firm'),
         const SizedBox(height: 8),
         _buildTotalLawyersField(),
         const SizedBox(height: 24),
-        const _SectionHeader('LAWYER DETAILS'),
+        const _SectionHeader('ATTORNEY DETAILS'),
         const SizedBox(height: 12),
         for (int i = 0; i < _lawyers.length; i++) ...[
           if (i > 0) const SizedBox(height: 20),
@@ -237,7 +257,7 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Lawyer ${index + 1}',
+                  'Attorney ${index + 1}',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -303,17 +323,71 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _FieldLabel('Bar License'),
+                    const _FieldLabel('Work Email'),
+                    const SizedBox(height: 8),
+                    _CardInputField(
+                      controller: lawyer.emailController,
+                      hint: 'name@firm.com',
+                      onChanged: (_) => setState(() {}),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _FieldLabel('Bar State'),
+                    const SizedBox(height: 8),
+                    _buildPicker(
+                      value: lawyer.barState,
+                      hint: 'Select state…',
+                      onTap: () => _showOptionSheet(
+                        title: 'Bar State',
+                        options: _barStates,
+                        selected: lawyer.barState,
+                        onPick: (v) => setState(() => lawyer.barState = v),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _FieldLabel('State Bar Number'),
                     const SizedBox(height: 8),
                     _CardInputField(
                       controller: lawyer.barLicenseController,
-                      hint: 'NY/2021/000',
+                      hint: 'e.g. 4321987',
                       onChanged: (_) => setState(() {}),
                     ),
                   ],
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 14),
+          const _FieldLabel('License Status'),
+          const SizedBox(height: 8),
+          _buildPicker(
+            value: lawyer.licenseStatus,
+            hint: 'Select status…',
+            onTap: () => _showOptionSheet(
+              title: 'License Status',
+              options: _licenseStatuses,
+              selected: lawyer.licenseStatus,
+              onPick: (v) => setState(() => lawyer.licenseStatus = v),
+            ),
           ),
           const SizedBox(height: 14),
           Row(
@@ -341,7 +415,16 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
                   children: [
                     const _FieldLabel('Designation'),
                     const SizedBox(height: 8),
-                    _buildDesignationPicker(lawyer),
+                    _buildPicker(
+                      value: lawyer.designation,
+                      hint: 'Select…',
+                      onTap: () => _showOptionSheet(
+                        title: 'Designation',
+                        options: _designations,
+                        selected: lawyer.designation,
+                        onPick: (v) => setState(() => lawyer.designation = v),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -373,22 +456,24 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
     );
   }
 
-  Widget _buildDesignationPicker(_LawyerEntry lawyer) {
+  Widget _buildPicker({
+    required String? value,
+    required String hint,
+    required VoidCallback onTap,
+  }) {
     return Material(
       color: AppColors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _showDesignationSheet(lawyer),
+        onTap: onTap,
         child: Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: lawyer.designation == null
-                  ? AppColors.borderGrey
-                  : AppColors.textPrimary,
+              color: value == null ? AppColors.borderGrey : AppColors.textPrimary,
               width: 1.4,
             ),
           ),
@@ -396,14 +481,14 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
             children: [
               Expanded(
                 child: Text(
-                  lawyer.designation ?? 'Select…',
+                  value ?? hint,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     letterSpacing: -0.15,
-                    color: lawyer.designation == null
+                    color: value == null
                         ? AppColors.textGrey
                         : AppColors.textPrimary,
                   ),
@@ -421,69 +506,81 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
     );
   }
 
-  void _showDesignationSheet(_LawyerEntry lawyer) {
+  void _showOptionSheet({
+    required String title,
+    required List<String> options,
+    required String? selected,
+    required ValueChanged<String> onPick,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.white,
+      isScrollControlled: options.length > 12,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
-                child: Text(
-                  'Designation',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.31,
-                    color: AppColors.textPrimary,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.7,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.31,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-                  itemCount: _designations.length,
-                  itemBuilder: (_, index) {
-                    final designation = _designations[index];
-                    final selected = designation == lawyer.designation;
-                    return ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      title: Text(
-                        designation,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight:
-                              selected ? FontWeight.w700 : FontWeight.w500,
-                          letterSpacing: -0.15,
-                          color: AppColors.textPrimary,
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                    itemCount: options.length,
+                    itemBuilder: (_, index) {
+                      final option = options[index];
+                      final isSelected = option == selected;
+                      return ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                      trailing: selected
-                          ? SvgPicture.asset(
-                              'assets/icons/ic_check.svg',
-                              width: 14,
-                              height: 14,
-                            )
-                          : null,
-                      onTap: () {
-                        setState(() => lawyer.designation = designation);
-                        Navigator.of(sheetContext).pop();
-                      },
-                    );
-                  },
+                        title: Text(
+                          option,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            letterSpacing: -0.15,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? SvgPicture.asset(
+                                'assets/icons/ic_check.svg',
+                                width: 14,
+                                height: 14,
+                              )
+                            : null,
+                        onTap: () {
+                          onPick(option);
+                          Navigator.of(sheetContext).pop();
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -518,7 +615,7 @@ class _AddLegalTeamScreenState extends State<AddLegalTeamScreen> {
                 ),
                 const SizedBox(width: 8),
                 const Text(
-                  'Add Another Lawyer',
+                  'Add Another Attorney',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,

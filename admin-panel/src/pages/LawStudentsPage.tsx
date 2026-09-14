@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconFile, IconSearch, IconX } from '../components/Icon';
 import {
-  AccountActions,
   Avatar,
   Badge,
+  DetailGrid,
+  DetailSection,
   Drawer,
+  DrawerHero,
   FilterChips,
-  InfoRow,
   PageHeader,
+  RowActions,
 } from '../components/ui';
 import type { AdminStudent, StudentVerificationStatus } from '../types';
 import {
@@ -19,6 +21,7 @@ import {
   toAdminStudent,
   unsuspendBackendUser,
 } from '../utils/backend';
+import { useRealtime } from '../utils/realtime';
 
 const FILTERS = ['All', 'Pending Verification', 'Verified', 'Rejected', 'Suspended'];
 
@@ -40,6 +43,9 @@ export default function LawStudentsPage() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, []);
+  useRealtime(['users'], () => {
+    void load();
+  });
 
   const list = useMemo(() => {
     return students.filter((s) => {
@@ -95,7 +101,7 @@ export default function LawStudentsPage() {
       <PageHeader
         eyebrow="Users"
         title="Law Students"
-        subtitle={`${students.length} registered · ${students.filter((s) => s.verification === 'Pending Verification').length} awaiting ID verification (SLA 2–4 hrs)`}
+        subtitle={`${students.length} registered · ${students.filter((s) => s.verification === 'Pending Verification').length} awaiting student ID verification`}
       />
 
       <div className="row" style={{ justifyContent: 'space-between', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -104,7 +110,7 @@ export default function LawStudentsPage() {
           <IconSearch />
           <input
             className="input"
-            placeholder="Search name, college, course..."
+            placeholder="Search name, law school, degree..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ height: 40 }}
@@ -118,12 +124,13 @@ export default function LawStudentsPage() {
             <tr>
               <th>Student</th>
               <th>Phone</th>
-              <th>College / University</th>
-              <th>Course</th>
-              <th>Academic Year</th>
-              <th>College ID</th>
+              <th>Law School</th>
+              <th>Degree Program</th>
+              <th>Year</th>
+              <th>Student ID</th>
               <th>Activity</th>
               <th>Verification</th>
+              <th style={{ textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -158,11 +165,20 @@ export default function LawStudentsPage() {
                 <td>
                   <Badge label={s.verification} />
                 </td>
+                <td style={{ textAlign: 'center' }}>
+                  <RowActions
+                    suspended={s.verification === 'Suspended'}
+                    onView={() => setSelectedId(s.id)}
+                    onSuspend={() => suspendUser(s.id)}
+                    onUnsuspend={() => unsuspendUser(s.id)}
+                    onDelete={() => deleteUser(s.id)}
+                  />
+                </td>
               </tr>
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
+                <td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
                   {loading ? 'Loading students…' : loadError || 'No students match this filter.'}
                 </td>
               </tr>
@@ -173,93 +189,93 @@ export default function LawStudentsPage() {
 
       {selected && (
         <Drawer
+          wide
           title="Student Verification"
           onClose={() => setSelectedId(null)}
           footer={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {selected.verification === 'Pending Verification' ? (
-                <div className="row" style={{ gap: 10 }}>
-                  <button
-                    className="btn-primary"
-                    style={{ flex: 1 }}
-                    onClick={() => setVerification(selected.id, 'Verified')}
-                  >
-                    <IconCheck /> Verify ID
-                  </button>
-                  <button
-                    className="btn-danger"
-                    style={{ flex: 1, height: 44, borderRadius: 14 }}
-                    onClick={() => setVerification(selected.id, 'Rejected')}
-                  >
-                    <IconX /> Reject
-                  </button>
-                </div>
-              ) : selected.verification !== 'Suspended' ? (
+            selected.verification === 'Pending Verification' ? (
+              <div className="row" style={{ gap: 10 }}>
                 <button
-                  className="btn-secondary"
-                  style={{ width: '100%' }}
-                  onClick={() => setVerification(selected.id, 'Pending Verification')}
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={() => setVerification(selected.id, 'Verified')}
                 >
-                  Move Back to Review
+                  <IconCheck /> Verify Student ID
                 </button>
-              ) : null}
-              <AccountActions
-                suspended={selected.verification === 'Suspended'}
-                onSuspend={() => suspendUser(selected.id)}
-                onUnsuspend={() => unsuspendUser(selected.id)}
-                onDelete={() => deleteUser(selected.id)}
-              />
-            </div>
+                <button
+                  className="btn-danger"
+                  style={{ flex: 1, height: 44, borderRadius: 14, fontSize: 13.5, gap: 8 }}
+                  onClick={() => setVerification(selected.id, 'Rejected')}
+                >
+                  <IconX /> Reject
+                </button>
+              </div>
+            ) : selected.verification !== 'Suspended' ? (
+              <button
+                className="btn-secondary"
+                style={{ width: '100%' }}
+                onClick={() => setVerification(selected.id, 'Pending Verification')}
+              >
+                Move Back to Review
+              </button>
+            ) : undefined
           }
         >
-          <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.fullName} photo={selected.photo} size={56} square />
-            <div>
-              <div className="row" style={{ gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.fullName}</span>
-                <Badge label={selected.verification} />
-              </div>
-              <div className="cell-sub" style={{ fontSize: 12.5 }}>
-                Law Student · {selected.location}
-              </div>
-            </div>
-          </div>
+          <DrawerHero
+            name={selected.fullName}
+            photo={selected.photo}
+            square
+            badge={selected.verification}
+            subtitle={`${selected.course || 'Law Student'} · ${selected.college}`}
+          />
 
           {selected.verification === 'Pending Verification' && (
-            <div
-              className="card-white"
-              style={{ padding: '10px 14px', marginBottom: 16, fontSize: 12, color: 'var(--text-grey-555)', lineHeight: 1.5 }}
-            >
-              While pending, the student can access Cases to Read, AI Brief (Basic), Legal News and Daily
-              Updates. Verification unlocks Mentorship Access, Internship Portal, Senior Advocate Queries
-              and Certificates.
+            <div className="note-box">
+              <span className="k">While pending</span>
+              The student can read cases, use the basic AI brief and legal news. Verifying the
+              student ID unlocks mentorship, the internship portal, attorney Q&amp;A and certificates.
             </div>
           )}
 
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Verification Details</div>
-          <InfoRow k="Login Phone" v={selected.phone} />
-          <InfoRow k="Email Address" v={selected.email} />
-          <InfoRow k="College / University" v={selected.college} />
-          <InfoRow k="Course" v={selected.course} />
-          <InfoRow k="Academic Year" v={selected.academicYear ?? '—'} />
-          <InfoRow
-            k="College ID Card"
-            v={
-              selected.idCardFile ? (
-                <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                  <IconFile size={14} /> {selected.idCardFile}
-                </span>
-              ) : (
-                'Not uploaded'
-              )
-            }
-          />
-          <InfoRow k="Submitted" v={selected.submitted} />
+          <DetailSection title="Account" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Login Phone', v: selected.phone },
+                { k: 'Email', v: selected.email },
+                { k: 'Submitted', v: selected.submitted },
+              ]}
+            />
+          </DetailSection>
 
-          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Activity</div>
-          <InfoRow k="Cases Read" v={selected.casesRead} />
-          <InfoRow k="Saved Items" v={selected.savedItems} />
-          <InfoRow k="Mentors" v={selected.mentors} />
+          <DetailSection title="Law School" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Law School', v: selected.college },
+                { k: 'Degree Program', v: selected.course },
+                { k: 'Year', v: selected.academicYear ?? '—' },
+                {
+                  k: 'Student ID Card',
+                  v: selected.idCardFile ? (
+                    <span className="row" style={{ gap: 6 }}>
+                      <IconFile size={14} /> {selected.idCardFile}
+                    </span>
+                  ) : (
+                    'Not uploaded'
+                  ),
+                },
+              ]}
+            />
+          </DetailSection>
+
+          <DetailSection title="Activity" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Cases Read', v: selected.casesRead },
+                { k: 'Saved Items', v: selected.savedItems },
+                { k: 'Mentors', v: selected.mentors },
+              ]}
+            />
+          </DetailSection>
         </Drawer>
       )}
     </div>

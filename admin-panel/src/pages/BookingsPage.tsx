@@ -1,27 +1,48 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IconSearch } from '../components/Icon';
 import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
-import { bookings, money } from '../utils/seed';
+import {
+  bookingStatusLabel,
+  consultationTypeLabel,
+  fetchAdminBookings,
+  formatDate,
+  type BackendBooking,
+} from '../utils/backend';
+import { money } from '../utils/seed';
+import { useRealtime } from '../utils/realtime';
 
-const FILTERS = ['All', 'Confirmed', 'Pending', 'Completed', 'Cancelled'];
+const FILTERS = ['All', 'Pending', 'Confirmed', 'Completed', 'Declined', 'Cancelled'];
+
+const dateTimeLabel = (b: BackendBooking) => `${formatDate(b.date)} · ${b.time}`;
 
 export default function BookingsPage() {
+  const [bookings, setBookings] = useState<BackendBooking[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [filter, setFilter] = useState('All');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const [tick, setTick] = useState(0);
+  useRealtime(['bookings'], () => setTick((t) => t + 1));
+
+  useEffect(() => {
+    fetchAdminBookings()
+      .then(setBookings)
+      .catch(() => setLoadError('Could not load bookings from the backend.'));
+  }, [tick]);
+
   const list = useMemo(() => {
     return bookings.filter((b) => {
-      const matchesFilter = filter === 'All' || b.status === filter;
+      const matchesFilter = filter === 'All' || bookingStatusLabel(b.status) === filter;
       const q = query.trim().toLowerCase();
       const matchesQuery =
         !q ||
-        b.client.toLowerCase().includes(q) ||
-        b.advocate.toLowerCase().includes(q) ||
+        b.clientName.toLowerCase().includes(q) ||
+        b.advocateName.toLowerCase().includes(q) ||
         b.id.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
-  }, [filter, query]);
+  }, [bookings, filter, query]);
 
   const selected = bookings.find((b) => b.id === selectedId) ?? null;
 
@@ -39,7 +60,7 @@ export default function BookingsPage() {
           <IconSearch />
           <input
             className="input"
-            placeholder="Search booking, client, advocate..."
+            placeholder="Search booking, client, attorney..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ height: 40 }}
@@ -53,7 +74,7 @@ export default function BookingsPage() {
             <tr>
               <th>Booking</th>
               <th>Client</th>
-              <th>Advocate</th>
+              <th>Attorney</th>
               <th>Type</th>
               <th>Date & Time</th>
               <th>Status</th>
@@ -64,29 +85,29 @@ export default function BookingsPage() {
             {list.map((b) => (
               <tr key={b.id} className="clickable" onClick={() => setSelectedId(b.id)}>
                 <td>
-                  <span className="cell-strong">{b.id}</span>
+                  <span className="cell-strong">{b.id.slice(0, 8).toUpperCase()}</span>
                 </td>
                 <td>
                   <div className="row" style={{ gap: 9 }}>
-                    <Avatar name={b.client} size={28} />
-                    {b.client}
+                    <Avatar name={b.clientName} size={28} />
+                    {b.clientName}
                   </div>
                 </td>
-                <td>{b.advocate}</td>
-                <td>{b.type}</td>
-                <td>{b.dateTime}</td>
+                <td>{b.advocateName}</td>
+                <td>{consultationTypeLabel(b.consultationType)}</td>
+                <td>{dateTimeLabel(b)}</td>
                 <td>
-                  <Badge label={b.status} />
+                  <Badge label={bookingStatusLabel(b.status)} />
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  <span className="cell-strong">{money(b.total)}</span>
+                  <span className="cell-strong">{money(b.amount)}</span>
                 </td>
               </tr>
             ))}
             {list.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
-                  No bookings match this filter.
+                  {loadError || 'No bookings match this filter.'}
                 </td>
               </tr>
             )}
@@ -98,27 +119,26 @@ export default function BookingsPage() {
         <Drawer title="Booking Details" onClose={() => setSelectedId(null)}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
             <div>
-              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.id}</div>
-              <div className="cell-sub" style={{ fontSize: 12.5 }}>{selected.dateTime}</div>
+              <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>
+                {selected.id.slice(0, 8).toUpperCase()}
+              </div>
+              <div className="cell-sub" style={{ fontSize: 12.5 }}>{dateTimeLabel(selected)}</div>
             </div>
-            <Badge label={selected.status} />
+            <Badge label={bookingStatusLabel(selected.status)} />
           </div>
 
           <div className="eyebrow" style={{ marginBottom: 4 }}>Consultation</div>
-          <InfoRow k="Client" v={selected.client} />
-          <InfoRow k="Advocate" v={selected.advocate} />
-          <InfoRow k="Consultation Type" v={selected.type} />
-          <InfoRow k="Duration" v="60 minutes" />
+          <InfoRow k="Client" v={selected.clientName} />
+          <InfoRow k="Attorney" v={selected.advocateName} />
+          <InfoRow k="Consultation Type" v={consultationTypeLabel(selected.consultationType)} />
+          <InfoRow k="Duration" v={`${selected.durationMinutes} minutes`} />
+          <InfoRow k="Booked On" v={formatDate(selected.createdAt)} />
 
-          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Payment Breakdown</div>
-          <InfoRow k="Consultation Fee" v={money(selected.fee)} />
-          <InfoRow k="Platform Fee" v={money(selected.platformFee)} />
-          <InfoRow k="Tax (8.5%)" v={money(selected.tax)} />
+          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Payment</div>
           <InfoRow
             k="Total"
-            v={<span style={{ fontSize: 15 }}>{money(selected.total)}</span>}
+            v={<span style={{ fontSize: 15 }}>{money(selected.amount)}</span>}
           />
-          <InfoRow k="Payment Method" v="Visa ···· 4242" />
         </Drawer>
       )}
     </div>

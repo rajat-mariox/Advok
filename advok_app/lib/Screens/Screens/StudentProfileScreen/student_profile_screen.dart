@@ -4,13 +4,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:provider/provider.dart';
+
 import '../../../CommonWidgets/profile_sheets.dart';
+import '../../../Routes/app_routes.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
-import '../../ChooseRoleScreen/choose_role_screen.dart';
-import '../../LawStudentRegistration/verification_submitted_screen.dart';
-import '../../SelectCountryScreen/select_country_screen.dart';
 import '../ProfileScreen/edit_profile_screen.dart';
+import '../BookingsScreen/bookings_screen.dart';
 import '../ProfileScreen/help_support_screen.dart';
 
 /// Profile tab of the law student flow. Mirrors the client profile design
@@ -39,9 +41,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 
   Future<void> _openEditProfile() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const EditProfileScreen()));
     if (changed == true && mounted) setState(() {});
   }
 
@@ -56,6 +58,21 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             padding: const EdgeInsets.only(top: 8, bottom: 32),
             children: [
               _buildProfileCard(),
+              _buildSectionLabel('Consultations'),
+              _buildSectionCard(
+                children: [
+                  ProfileMenuRow(
+                    icon: 'assets/icons/ic_calendar_dark.svg',
+                    title: 'My Bookings',
+                    subtitle: 'Consultations booked with attorneys',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const BookingsScreen(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               _buildSectionLabel('Verification'),
               _buildSectionCard(
                 children: [
@@ -65,11 +82,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     subtitle: Session.status == 'approved'
                         ? 'Verified'
                         : 'Pending · Under review',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const VerificationSubmittedScreen(),
-                      ),
-                    ),
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pushNamed(AppRoutes.studentSubmitted),
                   ),
                 ],
               ),
@@ -91,8 +106,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   ProfileInfoRow(
                     icon: 'assets/icons/ic_award.svg',
                     label: 'Academic Year',
-                    value:
-                        (Session.profile?['academicYear'] as String?) ?? '—',
+                    value: (Session.profile?['academicYear'] as String?) ?? '—',
                   ),
                 ],
               ),
@@ -232,10 +246,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     );
     // Staying on the current role needs no further action.
     if (selectedRole == null || selectedRole == 2 || !mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const ChooseRoleScreen()),
-      (route) => false,
-    );
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openLogoutSheet() async {
@@ -247,11 +260,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       builder: (context) => const LogoutSheet(),
     );
     if (confirmed == true && mounted) {
-      Session.clear();
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const SelectCountryScreen()),
-        (route) => false,
-      );
+      context.read<SessionProvider>().logout();
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.selectCountry, (route) => false);
     }
   }
 
@@ -274,51 +286,51 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
         slug: 'privacy-policy',
         fallback: ContentSheet(
           title: 'Privacy Policy',
-        sections: [
-          (
-            title: '1. Information We Collect',
-            body:
-                'We collect information you provide directly to us, such '
-                'as when you create an account, fill in a form, upload '
-                'verification documents, send us a message, or otherwise '
-                'communicate with us.',
-          ),
-          (
-            title: '2. How We Use Your Information',
-            body:
-                'We use the information we collect to operate and improve '
-                'our services, verify student status, send you technical '
-                'notices and support messages, respond to comments, and '
-                'monitor usage.',
-          ),
-          (
-            title: '3. Information Sharing',
-            body:
-                'We do not sell your personal data. We may share your '
-                'information with service providers who assist us in '
-                'operating the platform.',
-          ),
-          (
-            title: '4. Data Security',
-            body:
-                'We take reasonable measures to help protect information '
-                'about you from loss, theft, misuse, unauthorized access, '
-                'disclosure, alteration, and destruction.',
-          ),
-          (
-            title: '5. Your Rights',
-            body:
-                'You have the right to access, update, or delete your '
-                'personal information at any time from your profile '
-                'settings.',
-          ),
-          (
-            title: '6. Contact',
-            body:
-                'If you have any questions about this Privacy Policy, '
-                'please contact us at privacy@advok.app.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Information We Collect',
+              body:
+                  'We collect information you provide directly to us, such '
+                  'as when you create an account, fill in a form, upload '
+                  'verification documents, send us a message, or otherwise '
+                  'communicate with us.',
+            ),
+            (
+              title: '2. How We Use Your Information',
+              body:
+                  'We use the information we collect to operate and improve '
+                  'our services, verify student status, send you technical '
+                  'notices and support messages, respond to comments, and '
+                  'monitor usage.',
+            ),
+            (
+              title: '3. Information Sharing',
+              body:
+                  'We do not sell your personal data. We may share your '
+                  'information with service providers who assist us in '
+                  'operating the platform.',
+            ),
+            (
+              title: '4. Data Security',
+              body:
+                  'We take reasonable measures to help protect information '
+                  'about you from loss, theft, misuse, unauthorized access, '
+                  'disclosure, alteration, and destruction.',
+            ),
+            (
+              title: '5. Your Rights',
+              body:
+                  'You have the right to access, update, or delete your '
+                  'personal information at any time from your profile '
+                  'settings.',
+            ),
+            (
+              title: '6. Contact',
+              body:
+                  'If you have any questions about this Privacy Policy, '
+                  'please contact us at privacy@advok.app.',
+            ),
+          ],
           lastUpdated: 'Last updated: January 1, 2025',
         ),
       ),
@@ -331,53 +343,53 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
         slug: 'terms-and-conditions',
         fallback: ContentSheet(
           title: 'Terms & Conditions',
-        sections: [
-          (
-            title: '1. Acceptance of Terms',
-            body:
-                'By accessing or using ADVOK, you agree to be bound by '
-                'these Terms and our Privacy Policy.',
-          ),
-          (
-            title: '2. Use of Services',
-            body:
-                'ADVOK provides a platform connecting law students with '
-                'legal professionals and learning resources. We are not a '
-                'law firm and do not provide legal advice.',
-          ),
-          (
-            title: '3. User Accounts',
-            body:
-                'You are responsible for maintaining the confidentiality '
-                'of your account credentials.',
-          ),
-          (
-            title: '4. Student Verification',
-            body:
-                'Student accounts are verified against submitted college '
-                'ID documents. Providing false information may result in '
-                'account suspension.',
-          ),
-          (
-            title: '5. Mentorship & Content',
-            body:
-                'Mentorship sessions and learning content are provided for '
-                'educational purposes only and do not constitute legal '
-                'advice.',
-          ),
-          (
-            title: '6. Prohibited Conduct',
-            body:
-                'You may not use ADVOK for any unlawful purpose or to '
-                'harass advocates or other users.',
-          ),
-          (
-            title: '7. Governing Law',
-            body:
-                'These Terms shall be governed by the laws of the State '
-                'of New York.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Acceptance of Terms',
+              body:
+                  'By accessing or using ADVOK, you agree to be bound by '
+                  'these Terms and our Privacy Policy.',
+            ),
+            (
+              title: '2. Use of Services',
+              body:
+                  'ADVOK provides a platform connecting law students with '
+                  'legal professionals and learning resources. We are not a '
+                  'law firm and do not provide legal advice.',
+            ),
+            (
+              title: '3. User Accounts',
+              body:
+                  'You are responsible for maintaining the confidentiality '
+                  'of your account credentials.',
+            ),
+            (
+              title: '4. Student Verification',
+              body:
+                  'Student accounts are verified against submitted college '
+                  'ID documents. Providing false information may result in '
+                  'account suspension.',
+            ),
+            (
+              title: '5. Mentorship & Content',
+              body:
+                  'Mentorship sessions and learning content are provided for '
+                  'educational purposes only and do not constitute legal '
+                  'advice.',
+            ),
+            (
+              title: '6. Prohibited Conduct',
+              body:
+                  'You may not use ADVOK for any unlawful purpose or to '
+                  'harass advocates or other users.',
+            ),
+            (
+              title: '7. Governing Law',
+              body:
+                  'These Terms shall be governed by the laws of the State '
+                  'of New York.',
+            ),
+          ],
           lastUpdated: 'Effective: January 1, 2025',
         ),
       ),
@@ -405,9 +417,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             borderRadius: BorderRadius.circular(20),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                // TODO: Open the edit profile screen.
-              },
+              onTap: _openEditProfile,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 13,

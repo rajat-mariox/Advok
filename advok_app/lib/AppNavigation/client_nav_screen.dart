@@ -45,12 +45,14 @@ class _ClientNavScreenState extends State<ClientNavScreen> {
             children: [
               ClientHomeScreen(
                 onProfileTap: () => setState(() => _index = 4),
+                onSearchTap: () => setState(() => _index = 1),
+                onMessagesTap: () => setState(() => _index = 2),
               ),
               AdvocateListScreen(
                 title: 'Find ${CountryCatalog.terms.lawyerPlural}',
                 onBack: () => setState(() => _index = 0),
               ),
-              const MessagesScreen(),
+              MessagesScreen(onBack: () => setState(() => _index = 0)),
               BookingsScreen(onBack: () => setState(() => _index = 0)),
               const ProfileScreen(),
             ],

@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../FirmDashboardScreen/firm_case_details_screen.dart';
 import '../FirmDashboardScreen/firm_dashboard_screen.dart';
 
-const List<FirmCase> _allCases = [];
 
 /// Full case list for the firm's bottom-nav Cases tab.
 class FirmCasesScreen extends StatefulWidget {
@@ -18,8 +19,30 @@ class FirmCasesScreen extends StatefulWidget {
   State<FirmCasesScreen> createState() => _FirmCasesScreenState();
 }
 
-class _FirmCasesScreenState extends State<FirmCasesScreen> {
+class _FirmCasesScreenState extends State<FirmCasesScreen> with RealtimeRefresh {
   int _filter = 0;
+
+  /// Cases opened by the firm's attorneys, from the backend.
+  List<FirmCase> _allCases = [];
+
+  @override
+  void initState() {
+    super.initState();
+    listenRealtime({'cases'}, (_) {
+      _load();
+    });
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final result = await ApiService.fetchCases();
+      if (!mounted) return;
+      setState(() => _allCases = result.map(FirmCase.fromApi).toList());
+    } on ApiException {
+      // Keep the empty state.
+    }
+  }
 
   static const List<String> _filters = [
     'All',
@@ -147,7 +170,7 @@ class _FirmCasesScreenState extends State<FirmCasesScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Firm cases will appear here once case tracking goes live.',
+            'Cases your attorneys open for clients will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,

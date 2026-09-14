@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
-import { IconX } from './Icon';
+import type { CSSProperties, MouseEvent, ReactNode } from 'react';
+import { IconEye, IconTrash, IconUserRestore, IconUserX, IconX } from './Icon';
 
 // Greyscale status system — same base shades the app uses for its badges.
 const STATUS_SHADES: Record<string, string> = {
@@ -136,16 +136,19 @@ export function Drawer({
   onClose,
   children,
   footer,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** Wider panel for detail views with grids and lists. */
+  wide?: boolean;
 }) {
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} />
-      <aside className="drawer">
+      <aside className={`drawer${wide ? ' drawer-wide' : ''}`}>
         <div className="drawer-head">
           <span className="section-title">{title}</span>
           <button className="close-circle" onClick={onClose} aria-label="Close">
@@ -247,6 +250,167 @@ export function ComingSoon({
       >
         {description}
       </p>
+    </div>
+  );
+}
+
+// ---------- Detail-drawer building blocks ----------
+
+/** Avatar + name + badge + subtitle block at the top of a detail drawer. */
+export function DrawerHero({
+  name,
+  photo,
+  square = false,
+  badge,
+  subtitle,
+}: {
+  name: string;
+  photo?: string;
+  square?: boolean;
+  badge?: string;
+  subtitle?: ReactNode;
+}) {
+  return (
+    <div className="drawer-hero">
+      <Avatar name={name} photo={photo} size={56} square={square} />
+      <div style={{ minWidth: 0 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span className="drawer-hero-name">{name}</span>
+          {badge && <Badge label={badge} />}
+        </div>
+        {subtitle && <div className="drawer-hero-sub">{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** Row of up to three number tiles. */
+export function DrawerStats({ items }: { items: { value: ReactNode; label: string }[] }) {
+  return (
+    <div className="drawer-stats" style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }}>
+      {items.map((it) => (
+        <div key={it.label} className="drawer-stat">
+          <div className="drawer-stat-value">{it.value}</div>
+          <div className="drawer-stat-label">{it.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Titled card. Put InfoRows inside for a label/value list, or pass `grid`
+ *  cells for a two-column tile layout, or any custom children. */
+export function DetailSection({
+  title,
+  aside,
+  children,
+  flush = false,
+}: {
+  title: string;
+  aside?: ReactNode;
+  children: ReactNode;
+  /** No inner padding — for lists/grids that manage their own spacing. */
+  flush?: boolean;
+}) {
+  return (
+    <div className="detail-section">
+      <div className="detail-section-head">
+        <span className="eyebrow" style={{ color: 'var(--text-grey-555)' }}>{title}</span>
+        {aside}
+      </div>
+      {flush ? children : <div className="detail-section-body">{children}</div>}
+    </div>
+  );
+}
+
+export function DetailGrid({ cells }: { cells: { k: string; v: ReactNode }[] }) {
+  return (
+    <div className="detail-grid">
+      {cells.map((c) => (
+        <div key={c.k} className="detail-cell">
+          <span className="k">{c.k}</span>
+          <span className="v">{c.v ?? '—'}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ChipList({ items, empty = '—' }: { items: string[]; empty?: string }) {
+  if (!items.length) return <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-grey)' }}>{empty}</span>;
+  return (
+    <div className="chip-list">
+      {items.map((i) => (
+        <span key={i} className="chip-static">{i}</span>
+      ))}
+    </div>
+  );
+}
+
+export function ListItem({
+  title,
+  sub,
+  right,
+}: {
+  title: ReactNode;
+  sub?: ReactNode;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="list-item">
+      <div className="list-item-main">
+        <div className="list-item-title">{title}</div>
+        {sub && <div className="list-item-sub">{sub}</div>}
+      </div>
+      {right && <div style={{ flexShrink: 0 }}>{right}</div>}
+    </div>
+  );
+}
+
+export function ListEmpty({ text }: { text: string }) {
+  return <div className="list-empty">{text}</div>;
+}
+
+/** View / Suspend (or Reactivate) / Delete icon buttons for a table row. */
+export function RowActions({
+  suspended,
+  onView,
+  onSuspend,
+  onUnsuspend,
+  onDelete,
+}: {
+  suspended: boolean;
+  onView: () => void;
+  onSuspend: () => void;
+  onUnsuspend: () => void;
+  onDelete: () => void;
+}) {
+  const stop = (fn: () => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+  return (
+    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+      <button className="icon-btn" aria-label="View details" title="View details" onClick={stop(onView)}>
+        <IconEye />
+      </button>
+      {suspended ? (
+        <button
+          className="icon-btn"
+          aria-label="Reactivate account"
+          title="Reactivate account"
+          onClick={stop(onUnsuspend)}
+        >
+          <IconUserRestore />
+        </button>
+      ) : (
+        <button className="icon-btn" aria-label="Suspend account" title="Suspend account" onClick={stop(onSuspend)}>
+          <IconUserX />
+        </button>
+      )}
+      <button className="icon-btn icon-btn-danger" aria-label="Delete account" title="Delete account" onClick={stop(onDelete)}>
+        <IconTrash />
+      </button>
     </div>
   );
 }

@@ -5,13 +5,13 @@ import 'package:flutter/services.dart';
 import '../../CommonWidgets/circle_back_button.dart';
 import '../../CommonWidgets/phone_number_limit_formatter.dart';
 import '../../CommonWidgets/social_login_section.dart';
+import '../../Routes/app_routes.dart';
 import '../../Services/api_service.dart';
 import '../../Services/apple_auth_service.dart';
 import '../../Services/google_auth_service.dart';
 import '../../Services/post_login_navigator.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
-import '../OtpScreen/otp_screen.dart';
 import '../SelectCountryScreen/select_country_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -53,29 +53,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _googleSignIn() async {
     try {
-      final loggedIn =
-          await GoogleAuthService.signIn(country: widget.country.name);
+      final loggedIn = await GoogleAuthService.signIn(
+        country: widget.country.name,
+      );
       if (!loggedIn || !mounted) return;
       PostLoginNavigator.navigateAfterLogin(context);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   Future<void> _appleSignIn() async {
     try {
-      final loggedIn =
-          await AppleAuthService.signIn(country: widget.country.name);
+      final loggedIn = await AppleAuthService.signIn(
+        country: widget.country.name,
+      );
       if (!loggedIn || !mounted) return;
       PostLoginNavigator.navigateAfterLogin(context);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -89,20 +91,19 @@ class _LoginScreenState extends State<LoginScreen> {
         country: widget.country.name,
       );
       if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => OtpScreen(
-            country: widget.country,
-            phoneNumber: phone,
-            devOtp: devOtp,
-          ),
+      Navigator.of(context).pushNamed(
+        AppRoutes.otp,
+        arguments: OtpArgs(
+          country: widget.country,
+          phoneNumber: phone,
+          devOtp: devOtp,
         ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -353,7 +354,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Text.rich(
       const TextSpan(
         children: [
-          TextSpan(text: "By continuing, you agree to ADVOK's ", style: greyStyle),
+          TextSpan(
+            text: "By continuing, you agree to ADVOK's ",
+            style: greyStyle,
+          ),
           TextSpan(text: 'Terms of Service', style: blackStyle),
           TextSpan(text: ' and ', style: greyStyle),
           TextSpan(text: 'Privacy Policy', style: blackStyle),

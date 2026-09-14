@@ -6,6 +6,38 @@ import type { CmsPage } from './cms.model';
  */
 export const DEFAULT_CMS_PAGES: CmsPage[] = [
   {
+    slug: 'help-center',
+    title: 'FAQ & Help Center',
+    sections: [
+      {
+        title: 'How do I book a consultation?',
+        body: 'Open an attorney\'s profile and tap Book Appointment. Choose the consultation type, date and time, then confirm. The attorney accepts or declines the request and you are notified either way.',
+      },
+      {
+        title: 'When do I get the attorney\'s contact details?',
+        body: 'As soon as the attorney accepts your request, their phone number and email appear in your Messages thread and on the booking card.',
+      },
+      {
+        title: 'How do I cancel a booking?',
+        body: 'Go to Bookings, open the upcoming consultation and tap Cancel. Refunds follow the policy in our Terms & Conditions.',
+      },
+      {
+        title: 'Why is my account still pending?',
+        body: 'Attorney, law student and law firm accounts are reviewed by our team against bar and college records. This usually takes 1–2 business days; you will be notified once approved.',
+      },
+      {
+        title: 'How do I share documents with my attorney?',
+        body: 'Open the case from the Cases tab. Your attorney can request documents there, and you can upload files directly against each request.',
+      },
+      {
+        title: 'Still need help?',
+        body: 'Use Contact Support on the Help & Support screen to raise a ticket. Our team replies inside the app and you are notified when they do.',
+      },
+    ],
+    lastUpdatedLabel: 'Last updated: August 25, 2026',
+    updatedAt: '2026-08-25T00:00:00.000Z',
+  },
+  {
     slug: 'terms-and-conditions',
     title: 'Terms & Conditions',
     sections: [

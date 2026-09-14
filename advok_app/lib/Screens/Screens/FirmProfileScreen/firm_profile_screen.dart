@@ -4,12 +4,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:provider/provider.dart';
+
 import '../../../CommonWidgets/profile_sheets.dart';
+import '../../../Routes/app_routes.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
-import '../../ChooseRoleScreen/choose_role_screen.dart';
-import '../../SelectCountryScreen/select_country_screen.dart';
 import '../ProfileScreen/edit_profile_screen.dart';
+import '../BookingsScreen/bookings_screen.dart';
 import '../ProfileScreen/help_support_screen.dart';
 
 /// Firm tab of the law-firm flow, modeled on the client profile screen.
@@ -34,9 +37,9 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
   }
 
   Future<void> _openEditProfile() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const EditProfileScreen()));
     if (changed == true && mounted) setState(() {});
   }
 
@@ -61,14 +64,27 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      _about.isEmpty
-                          ? 'Add a short firm description…'
-                          : _about,
+                      _about.isEmpty ? 'Add a short firm description…' : _about,
                       style: const TextStyle(
                         fontSize: 14,
                         height: 22.75 / 14,
                         letterSpacing: -0.15,
                         color: AppColors.textGrey555,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              _buildSectionLabel('Consultations'),
+              _buildSectionCard(
+                children: [
+                  ProfileMenuRow(
+                    icon: 'assets/icons/ic_calendar_dark.svg',
+                    title: 'My Bookings',
+                    subtitle: 'Client requests and consultations with attorneys',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const BookingsScreen(),
                       ),
                     ),
                   ),
@@ -240,10 +256,9 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
     );
     // Staying on the current role needs no further action.
     if (selectedRole == null || selectedRole == 3 || !mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const ChooseRoleScreen()),
-      (route) => false,
-    );
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openAboutSheet() {
@@ -286,51 +301,51 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
         slug: 'privacy-policy',
         fallback: ContentSheet(
           title: 'Privacy Policy',
-        sections: [
-          (
-            title: '1. Information We Collect',
-            body:
-                'We collect information you provide directly to us, such '
-                'as when you create an account, fill in a form, make a '
-                'booking, send us a message, or otherwise communicate '
-                'with us.',
-          ),
-          (
-            title: '2. How We Use Your Information',
-            body:
-                'We use the information we collect to operate and improve '
-                'our services, process bookings, send you technical notices '
-                'and support messages, respond to comments, and monitor '
-                'usage.',
-          ),
-          (
-            title: '3. Information Sharing',
-            body:
-                'We do not sell your personal data. We may share your '
-                'information with service providers who assist us in '
-                'operating the platform.',
-          ),
-          (
-            title: '4. Data Security',
-            body:
-                'We take reasonable measures to help protect information '
-                'about you from loss, theft, misuse, unauthorized access, '
-                'disclosure, alteration, and destruction.',
-          ),
-          (
-            title: '5. Your Rights',
-            body:
-                'You have the right to access, update, or delete your '
-                'personal information at any time from your profile '
-                'settings.',
-          ),
-          (
-            title: '6. Contact',
-            body:
-                'If you have any questions about this Privacy Policy, '
-                'please contact us at privacy@advok.app.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Information We Collect',
+              body:
+                  'We collect information you provide directly to us, such '
+                  'as when you create an account, fill in a form, make a '
+                  'booking, send us a message, or otherwise communicate '
+                  'with us.',
+            ),
+            (
+              title: '2. How We Use Your Information',
+              body:
+                  'We use the information we collect to operate and improve '
+                  'our services, process bookings, send you technical notices '
+                  'and support messages, respond to comments, and monitor '
+                  'usage.',
+            ),
+            (
+              title: '3. Information Sharing',
+              body:
+                  'We do not sell your personal data. We may share your '
+                  'information with service providers who assist us in '
+                  'operating the platform.',
+            ),
+            (
+              title: '4. Data Security',
+              body:
+                  'We take reasonable measures to help protect information '
+                  'about you from loss, theft, misuse, unauthorized access, '
+                  'disclosure, alteration, and destruction.',
+            ),
+            (
+              title: '5. Your Rights',
+              body:
+                  'You have the right to access, update, or delete your '
+                  'personal information at any time from your profile '
+                  'settings.',
+            ),
+            (
+              title: '6. Contact',
+              body:
+                  'If you have any questions about this Privacy Policy, '
+                  'please contact us at privacy@advok.app.',
+            ),
+          ],
           lastUpdated: 'Last updated: January 1, 2025',
         ),
       ),
@@ -347,52 +362,52 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
         slug: 'terms-and-conditions',
         fallback: ContentSheet(
           title: 'Terms & Conditions',
-        sections: [
-          (
-            title: '1. Acceptance of Terms',
-            body:
-                'By accessing or using ADVOK, you agree to be bound by '
-                'these Terms and our Privacy Policy.',
-          ),
-          (
-            title: '2. Use of Services',
-            body:
-                'ADVOK provides a platform connecting clients with legal '
-                'professionals. We are not a law firm and do not provide '
-                'legal advice.',
-          ),
-          (
-            title: '3. User Accounts',
-            body:
-                'You are responsible for maintaining the confidentiality '
-                'of your account credentials.',
-          ),
-          (
-            title: '4. Legal Professional Verification',
-            body:
-                'All legal professionals listed on ADVOK are independently '
-                'verified against Bar Council or state bar records.',
-          ),
-          (
-            title: '5. Payment & Refunds',
-            body:
-                'Consultation fees are charged at the rates listed by '
-                'each advocate. Refunds are available within 24 hours of '
-                'booking if cancelled before the consultation begins.',
-          ),
-          (
-            title: '6. Prohibited Conduct',
-            body:
-                'You may not use ADVOK for any unlawful purpose or to '
-                'harass advocates or other users.',
-          ),
-          (
-            title: '7. Governing Law',
-            body:
-                'These Terms shall be governed by the laws of the State '
-                'of New York.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Acceptance of Terms',
+              body:
+                  'By accessing or using ADVOK, you agree to be bound by '
+                  'these Terms and our Privacy Policy.',
+            ),
+            (
+              title: '2. Use of Services',
+              body:
+                  'ADVOK provides a platform connecting clients with legal '
+                  'professionals. We are not a law firm and do not provide '
+                  'legal advice.',
+            ),
+            (
+              title: '3. User Accounts',
+              body:
+                  'You are responsible for maintaining the confidentiality '
+                  'of your account credentials.',
+            ),
+            (
+              title: '4. Legal Professional Verification',
+              body:
+                  'All legal professionals listed on ADVOK are independently '
+                  'verified against Bar Council or state bar records.',
+            ),
+            (
+              title: '5. Payment & Refunds',
+              body:
+                  'Consultation fees are charged at the rates listed by '
+                  'each advocate. Refunds are available within 24 hours of '
+                  'booking if cancelled before the consultation begins.',
+            ),
+            (
+              title: '6. Prohibited Conduct',
+              body:
+                  'You may not use ADVOK for any unlawful purpose or to '
+                  'harass advocates or other users.',
+            ),
+            (
+              title: '7. Governing Law',
+              body:
+                  'These Terms shall be governed by the laws of the State '
+                  'of New York.',
+            ),
+          ],
           lastUpdated: 'Effective: January 1, 2025',
         ),
       ),
@@ -408,11 +423,10 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
       builder: (context) => const LogoutSheet(),
     );
     if (confirmed == true && mounted) {
-      Session.clear();
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const SelectCountryScreen()),
-        (route) => false,
-      );
+      context.read<SessionProvider>().logout();
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.selectCountry, (route) => false);
     }
   }
 
@@ -622,7 +636,10 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildStatCard('0', 'Lawyers'),
+              _buildStatCard(
+                '${(Session.profile?['lawyers'] as List<dynamic>?)?.length ?? 0}',
+                'Attorneys',
+              ),
               const SizedBox(width: 8),
               _buildStatCard('0', 'Active Cases'),
               const SizedBox(width: 8),

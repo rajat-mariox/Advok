@@ -3,25 +3,21 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
 import '../../LawStudentRegistration/verification_submitted_screen.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart'
+    show Advocate, AdvocateListScreen, InitialsAvatar;
+import '../AdvocateProfileScreen/advocate_profile_screen.dart';
 import '../NotificationScreen/notification_screen.dart';
 import '../AdvokAiScreen/advok_ai_screen.dart';
+import 'case_notes_screen.dart';
 import 'case_study_screen.dart';
+import 'legal_dictionary_screen.dart';
 import 'news_article_screen.dart';
 
-/// Case studies are loaded from the backend; empty until then.
-const List<CaseStudy> _cases = [];
 
-/// Recommended advocates are loaded from the backend; empty until then.
-const List<
-  ({String name, String subtitle, String rating, String image, bool locked})
->
-_advocates = [];
-
-/// Legal news is loaded from the backend; empty until then.
-const List<NewsArticle> _news = [];
 
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({super.key, this.onProfileTap});
@@ -34,20 +30,116 @@ class StudentHomeScreen extends StatefulWidget {
   State<StudentHomeScreen> createState() => _StudentHomeScreenState();
 }
 
-class _StudentHomeScreenState extends State<StudentHomeScreen> {
+class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefresh {
   static const List<String> _chips = ['Home', 'Legal News', 'Tools', 'Saved'];
 
   static const List<String> _newsFilters = [
     'All',
     'Supreme Court',
-    'High Court',
+    'Federal Courts',
     'Legislation',
-    'Exam Update',
+    'Bar Exam',
+    'Legal News',
   ];
+
+  /// US legal news from the backend (SCOTUSblog, ABA Journal, Congress.gov).
+  List<NewsArticle> _news = [];
+  bool _newsLoading = true;
+  String _newsError = '';
 
   int _selectedChip = 0;
   int _selectedNewsFilter = 0;
   final Set<int> _savedCases = <int>{};
+
+  /// Admin-curated "Cases to Read" from the backend (published only).
+  List<CaseStudy> _cases = [];
+  bool _casesLoading = true;
+  String _casesError = '';
+
+  /// Verified attorneys from the backend, shown under "Recommended".
+  List<Advocate> _advocates = [];
+  bool _advocatesLoading = true;
+  String _advocatesError = '';
+
+  /// Attorney actions stay locked until the student's account is verified.
+  bool get _locked {
+    final status = Session.user?['status'] as String?;
+    return status != 'approved' && status != 'active';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    listenRealtime({'content'}, (_) {
+      _loadCases();
+      _loadNews();
+    });
+    _loadAdvocates();
+    _loadCases();
+    _loadNews();
+  }
+
+  Future<void> _loadNews() async {
+    try {
+      final result = await ApiService.fetchLegalNews();
+      if (!mounted) return;
+      setState(() {
+        _news = result.map(NewsArticle.fromApi).toList();
+        _newsError = '';
+        _newsLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _newsError = e.message;
+        _newsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadCases() async {
+    try {
+      final result = await ApiService.fetchCaseStudies();
+      if (!mounted) return;
+      setState(() {
+        _cases = result.map(CaseStudy.fromApi).toList();
+        _casesError = '';
+        _casesLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _casesError = e.message;
+        _casesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadAdvocates() async {
+    try {
+      final result = await ApiService.fetchAdvocates();
+      if (!mounted) return;
+      setState(() {
+        _advocates = result.map(Advocate.fromApi).toList();
+        _advocatesError = '';
+        _advocatesLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _advocatesError = e.message;
+        _advocatesLoading = false;
+      });
+    }
+  }
+
+  void _openAdvocate(Advocate advocate) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdvocateProfileScreen(advocate: advocate),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,11 +222,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      if (_cases.isEmpty)
+      if (_casesLoading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_casesError.isNotEmpty)
+        _buildSectionPlaceholder(_casesError)
+      else if (_cases.isEmpty)
         _buildEmptyState(
           icon: 'assets/icons/ic_judge.svg',
           title: 'No cases yet',
-          subtitle: 'Case studies will appear here soon.',
+          subtitle: 'Cases picked by the ADVOK team will appear here.',
         )
       else
         for (int i = 0; i < _cases.length; i++)
@@ -159,7 +258,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               ),
             ),
             InkWell(
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AdvocateListScreen(
+                      title: CountryCatalog.terms.lawyerPlural,
+                    ),
+                  ),
+                );
+              },
               child: const Text(
                 'See all',
                 style: TextStyle(
@@ -174,10 +281,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
       ),
       const SizedBox(height: 12),
-      if (_advocates.isEmpty)
-        _buildSectionPlaceholder('Recommended advocates will appear here soon.')
+      if (_advocatesLoading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_advocatesError.isNotEmpty)
+        _buildSectionPlaceholder(_advocatesError)
+      else if (_advocates.isEmpty)
+        _buildSectionPlaceholder(
+          'No verified ${CountryCatalog.terms.lawyerPlural.toLowerCase()} '
+          'are available yet.',
+        )
       else
-        for (final advocate in _advocates)
+        for (final advocate in _advocates.take(5))
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: _buildAdvocateCard(advocate),
@@ -323,11 +440,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
       ),
       const SizedBox(height: 16),
-      if (items.isEmpty)
+      if (_newsLoading)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_newsError.isNotEmpty)
+        _buildSectionPlaceholder(_newsError)
+      else if (items.isEmpty)
         _buildEmptyState(
           icon: 'assets/icons/ic_book_open.svg',
           title: 'No news yet',
-          subtitle: 'Legal news and updates will appear here soon.',
+          subtitle: 'US legal news and updates will appear here.',
         )
       else
         for (final item in items)
@@ -699,14 +823,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        // Remaining unlocked tools open their flows once those screens exist.
         onTap: tool.locked
             ? null
             : () {
-                if (tool.title == 'AI Case Brief' ||
-                    tool.title == 'Explain Legal Terms') {
+                final Widget? screen = switch (tool.title) {
+                  'AI Case Brief' || 'Explain Legal Terms' => const AdvokAiScreen(),
+                  'Generate Case Notes' => const CaseNotesPickerScreen(),
+                  'Legal Dictionary' => const LegalDictionaryScreen(),
+                  _ => null,
+                };
+                if (screen != null) {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AdvokAiScreen()),
+                    MaterialPageRoute(builder: (_) => screen),
                   );
                 }
               },
@@ -1137,10 +1265,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
-  Widget _buildAdvocateCard(
-    ({String name, String subtitle, String rating, String image, bool locked})
-    advocate,
-  ) {
+  Widget _buildAdvocateCard(Advocate advocate) {
+    final locked = _locked;
+    final subtitle = [advocate.specialty, advocate.experience]
+        .where((s) => s.isNotEmpty)
+        .join(' · ');
+    final tierLabel = advocate.tier == 'senior' ? 'Senior' : 'Junior';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1151,7 +1281,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       child: Row(
         children: [
           Opacity(
-            opacity: advocate.locked ? 0.55 : 1,
+            opacity: locked ? 0.55 : 1,
             child: Container(
               width: 52,
               height: 52,
@@ -1160,14 +1290,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 border: Border.all(color: AppColors.borderGrey),
               ),
               child: ClipOval(
-                child: Image.asset(advocate.image, fit: BoxFit.cover),
+                child: advocate.photoBytes == null
+                    ? InitialsAvatar(name: advocate.name, size: 52)
+                    : Image.memory(advocate.photoBytes!, fit: BoxFit.cover),
               ),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Opacity(
-              opacity: advocate.locked ? 0.55 : 1,
+              opacity: locked ? 0.55 : 1,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1187,7 +1319,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ),
                         ),
                       ),
-                      if (advocate.locked) ...[
+                      if (locked) ...[
                         const SizedBox(width: 6),
                         SvgPicture.asset(
                           'assets/icons/ic_lock.svg',
@@ -1203,7 +1335,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    advocate.subtitle,
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
                       height: 16 / 12,
@@ -1220,7 +1354,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        advocate.rating,
+                        advocate.rating ?? tierLabel,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -1235,7 +1369,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          if (advocate.locked)
+          if (locked)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
@@ -1258,7 +1392,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               borderRadius: BorderRadius.circular(100),
               child: InkWell(
                 borderRadius: BorderRadius.circular(100),
-                onTap: () {},
+                onTap: () => _openAdvocate(advocate),
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 18, vertical: 9),
                   child: Text(

@@ -13,6 +13,7 @@ import type { AuthedRequest } from '../middlewares/auth.middleware';
 import type { Role } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { signToken } from '../services/token.service';
+import { linkFirmAttorney } from '../services/firm.service';
 import { publicUser } from '../util/user.util';
 import { isValidPhone } from '../validators/auth.validator';
 
@@ -91,6 +92,9 @@ export function verifyOtp(req: Request, res: Response) {
     // existing country — the account's legal flow must stay stable.
     user.country = record.country;
   }
+  // A phone number on an approved law firm's team signs in as that firm's
+  // attorney — no onboarding, the firm already vouched for them.
+  linkFirmAttorney(db, user);
   saveDb();
   const token = signToken(user.id, APP_TOKEN_TTL);
   return res.json({ token, user: publicUser(user) });

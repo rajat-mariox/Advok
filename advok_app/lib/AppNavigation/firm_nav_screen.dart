@@ -22,7 +22,7 @@ class _FirmNavScreenState extends State<FirmNavScreen> {
 
   static const List<({String icon, String label})> _items = [
     (icon: 'assets/icons/ic_nav_home.svg', label: 'Home'),
-    (icon: 'assets/icons/ic_purpose_clients.svg', label: 'Lawyers'),
+    (icon: 'assets/icons/ic_purpose_clients.svg', label: 'Attorneys'),
     (icon: 'assets/icons/ic_nav_messages.svg', label: 'Messages'),
     (icon: 'assets/icons/ic_file.svg', label: 'Cases'),
     (icon: 'assets/icons/ic_role_firm.svg', label: 'Firm'),
@@ -49,7 +49,7 @@ class _FirmNavScreenState extends State<FirmNavScreen> {
                 onBack: () => setState(() => _index = 0),
                 onViewCases: () => setState(() => _index = 3),
               ),
-              const MessagesScreen(),
+              MessagesScreen(onBack: () => setState(() => _index = 0)),
               FirmCasesScreen(onBack: () => setState(() => _index = 0)),
               const FirmProfileScreen(),
             ],

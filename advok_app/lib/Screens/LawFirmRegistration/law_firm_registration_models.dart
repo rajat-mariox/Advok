@@ -6,6 +6,7 @@ class LawFirmRegistrationData {
     required this.foundedYear,
     required this.contactPersonName,
     this.logoFileName,
+    this.logoDataUrl,
     required this.officialEmail,
     required this.mainPhone,
     this.receptionNumber,
@@ -20,6 +21,10 @@ class LawFirmRegistrationData {
   final String foundedYear;
   final String contactPersonName;
   final String? logoFileName;
+
+  /// Logo image as a 'data:image/...;base64,…' string, sent as the firm's
+  /// profile photo. Null when no logo was picked.
+  final String? logoDataUrl;
   final String officialEmail;
   final String mainPhone;
   final String? receptionNumber;

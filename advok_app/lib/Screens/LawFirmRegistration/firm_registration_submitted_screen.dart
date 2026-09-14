@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../AppNavigation/firm_nav_screen.dart';
+import '../../Routes/app_routes.dart';
 import '../../Services/approval_status_poller.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/Responsive/responsive.dart';
-import '../RegistrationStatus/registration_rejected_screen.dart';
 
 /// Terminal screen of the law-firm registration flow. Polls the backend and
 /// keeps the dashboard locked until the admin approves the firm; a rejection
@@ -42,14 +41,10 @@ class _FirmRegistrationSubmittedScreenState
   void _onStatusChanged(String status, String? rejectionReason) {
     if (!mounted) return;
     if (status == 'rejected') {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => RegistrationRejectedScreen(
-            role: 'law_firm',
-            reason: rejectionReason,
-          ),
-        ),
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.registrationRejected,
         (route) => false,
+        arguments: StatusArgs(role: 'law_firm', reason: rejectionReason),
       );
       return;
     }
@@ -180,9 +175,9 @@ class _FirmRegistrationSubmittedScreenState
           child: Text(
             _approved
                 ? 'Your firm has been verified and approved. All premium '
-                    'features are now unlocked for your team.'
+                      'features are now unlocked for your team.'
                 : "Your firm's registration is under review. Our team will verify "
-                    "your credentials and notify you within 24–48 hours.",
+                      "your credentials and notify you within 24–48 hours.",
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -262,7 +257,7 @@ class _FirmRegistrationSubmittedScreenState
           const _SectionCaption('AVAILABLE WHILE PENDING'),
           const SizedBox(height: 12),
           const _AccessRow('Basic Dashboard', unlocked: true),
-          const _AccessRow('Lawyer Management', unlocked: true),
+          const _AccessRow('Attorney Management', unlocked: true),
           const _AccessRow('Case Tracking', unlocked: true),
           const SizedBox(height: 8),
           Container(height: 1, color: AppColors.divider),
@@ -298,8 +293,8 @@ class _FirmRegistrationSubmittedScreenState
               borderRadius: BorderRadius.circular(14),
               onTap: _approved
                   ? () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const FirmNavScreen()),
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        AppRoutes.firmHome,
                         (route) => false,
                       );
                     }
@@ -433,8 +428,7 @@ class _TimelineStep extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   height: 20 / 14,
                   letterSpacing: -0.15,
-                  color:
-                      upcoming ? AppColors.textGrey : AppColors.textPrimary,
+                  color: upcoming ? AppColors.textGrey : AppColors.textPrimary,
                 ),
               ),
             ),

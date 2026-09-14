@@ -5,13 +5,16 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
+import '../MessagesScreen/chat_screen.dart';
 
 class _Booking {
   const _Booking({
     required this.id,
+    this.advocateId = '',
     required this.name,
     required this.type,
     required this.status,
@@ -21,7 +24,10 @@ class _Booking {
     required this.photoBytes,
     required this.past,
     required this.canCancel,
+    this.canComplete = false,
+    this.contact,
     this.canJoinCall = false,
+    this.sortKey = '',
   });
 
   static const List<String> _months = [
@@ -39,6 +45,17 @@ class _Booking {
     'Dec',
   ];
 
+  /// '10:00 AM' → minutes since midnight, for chronological ordering.
+  static int _slotMinutes(String time) {
+    final match =
+        RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false)
+            .firstMatch(time.trim());
+    if (match == null) return 0;
+    var h = int.parse(match.group(1)!) % 12;
+    if (match.group(3)!.toUpperCase() == 'PM') h += 12;
+    return h * 60 + int.parse(match.group(2)!);
+  }
+
   /// Builds a card model from the backend's /bookings response.
   factory _Booking.fromApi(Map<String, dynamic> json) {
     final status = json['status'] as String? ?? 'pending';
@@ -46,6 +63,8 @@ class _Booking {
     final date = DateTime.tryParse(json['date'] as String? ?? '');
     final time = json['time'] as String? ?? '';
     final amount = (json['amount'] as num?)?.toDouble() ?? 0;
+    final sortKey = '${json['date'] as String? ?? ''} '
+        '${_slotMinutes(time).toString().padLeft(4, '0')}';
 
     final today = DateTime.now();
     final dateIsPast = date != null &&
@@ -56,14 +75,36 @@ class _Booking {
     final (label, color) = switch (status) {
       'pending' => ('Pending', const Color(0xFFB07A00)),
       'confirmed' => ('Confirmed', const Color(0xFF1E7A46)),
+      'completed' => ('Completed', const Color(0xFF2A2A2A)),
       'declined' => ('Declined', const Color(0xFF9A3B3B)),
       'cancelled' => ('Cancelled', AppColors.textGrey555),
       _ => (status, AppColors.textGrey555),
     };
 
+    // Attorney contact details, shared once the request is accepted (the
+    // client also gets them by SMS).
+    final contact = [
+      json['advocatePhone'] as String?,
+      json['advocateEmail'] as String?,
+    ].whereType<String>().where((c) => c.trim().isNotEmpty).join(' · ');
+
+    // A law firm sees both directions: requests it received (incoming, show
+    // the client) and consultations it booked with attorneys.
+    final incoming = json['incoming'] == true;
+    // Firm booking: once the firm assigns an attorney, show them by name.
+    final assigned = (json['assignedAttorney'] ?? json['requestedAttorney'])
+        as Map<String, dynamic>?;
+    final firmName = (json['firmName'] as String? ?? '').trim();
+    final assignedName = (assigned?['name'] as String? ?? '').trim();
+    final providerName = assignedName.isNotEmpty
+        ? (firmName.isNotEmpty ? '$assignedName · $firmName' : assignedName)
+        : (json['advocateName'] as String? ?? 'Attorney');
     return _Booking(
       id: json['id'] as String? ?? '',
-      name: json['advocateName'] as String? ?? 'Advocate',
+      advocateId: incoming
+          ? (json['clientId'] as String? ?? '')
+          : (json['advocateId'] as String? ?? ''),
+      name: incoming ? (json['clientName'] as String? ?? 'Client') : providerName,
       type: switch (kind) {
         'office_visit' => 'Office Visit · In-person',
         'phone_call' => 'Phone Call',
@@ -75,14 +116,25 @@ class _Booking {
           ? time
           : '${_months[date.month - 1]} ${date.day} · $time',
       price: '\$${amount.toStringAsFixed(2)}',
-      photoBytes: decodePhotoDataUrl(json['advocatePhoto'] as String?),
+      photoBytes: decodePhotoDataUrl(
+        (incoming ? json['clientPhoto'] : json['advocatePhoto']) as String?,
+      ),
       past: !upcoming,
       canCancel: upcoming,
+      canComplete: status == 'confirmed' && !dateIsPast,
+      contact: (status == 'confirmed' || status == 'completed') &&
+              contact.isNotEmpty
+          ? contact
+          : null,
       canJoinCall: false,
+      sortKey: sortKey,
     );
   }
 
   final String id;
+
+  /// Backend user id of the advocate, for opening the chat.
+  final String advocateId;
   final String name;
   final String type;
   final String status;
@@ -90,6 +142,9 @@ class _Booking {
   final String dateTime;
   final String price;
   final Uint8List? photoBytes;
+
+  /// 'phone · email' of the advocate, only present once they accepted.
+  final String? contact;
   final bool canJoinCall;
 
   /// Declined/cancelled or already-passed bookings live in the Past tab.
@@ -97,6 +152,12 @@ class _Booking {
 
   /// Upcoming pending/confirmed bookings can still be cancelled.
   final bool canCancel;
+
+  /// Confirmed consultations can be marked as held ("we already talked").
+  final bool canComplete;
+
+  /// 'YYYY-MM-DD mmmm' — appointment date + slot, for chronological sort.
+  final String sortKey;
 }
 
 class BookingsScreen extends StatefulWidget {
@@ -109,7 +170,7 @@ class BookingsScreen extends StatefulWidget {
   State<BookingsScreen> createState() => _BookingsScreenState();
 }
 
-class _BookingsScreenState extends State<BookingsScreen> {
+class _BookingsScreenState extends State<BookingsScreen> with RealtimeRefresh {
   int _selectedTab = 0;
 
   List<_Booking> _bookings = [];
@@ -119,6 +180,9 @@ class _BookingsScreenState extends State<BookingsScreen> {
   @override
   void initState() {
     super.initState();
+    listenRealtime({'bookings'}, (_) {
+      _load();
+    });
     _load();
   }
 
@@ -137,6 +201,40 @@ class _BookingsScreenState extends State<BookingsScreen> {
         _loadError = e.message;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _complete(_Booking booking) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.white,
+        title: const Text('Mark as completed?'),
+        content: Text(
+          'Your consultation with ${booking.name} will move to Past. '
+          'Use this once you have already talked.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Not yet'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Mark completed'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.completeBooking(booking.id);
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     }
   }
 
@@ -180,6 +278,12 @@ class _BookingsScreenState extends State<BookingsScreen> {
       for (final b in _bookings)
         if (b.past == (_selectedTab == 1)) b,
     ];
+    // Upcoming: soonest appointment first. Past: most recent first.
+    bookings.sort(
+      (a, b) => _selectedTab == 0
+          ? a.sortKey.compareTo(b.sortKey)
+          : b.sortKey.compareTo(a.sortKey),
+    );
     return Column(
       children: [
         Container(
@@ -234,6 +338,7 @@ class _BookingsScreenState extends State<BookingsScreen> {
                           itemBuilder: (context, index) => _BookingCard(
                             booking: bookings[index],
                             onCancel: () => _cancel(bookings[index]),
+                            onComplete: () => _complete(bookings[index]),
                           ),
                         ),
                 ),
@@ -317,7 +422,13 @@ class _BookingsScreenState extends State<BookingsScreen> {
 }
 
 class _BookingCard extends StatelessWidget {
-  const _BookingCard({required this.booking, required this.onCancel});
+  const _BookingCard({
+    required this.booking,
+    required this.onCancel,
+    required this.onComplete,
+  });
+
+  final VoidCallback onComplete;
 
   final _Booking booking;
   final VoidCallback onCancel;
@@ -438,6 +549,32 @@ class _BookingCard extends StatelessWidget {
               ],
             ),
           ),
+          if (booking.contact != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  SvgPicture.asset(
+                    'assets/icons/ic_phone.svg',
+                    width: 13,
+                    height: 13,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      booking.contact!,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 16 / 12,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (booking.canCancel)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -450,10 +587,38 @@ class _BookingCard extends StatelessWidget {
                       borderColor: AppColors.borderGrey,
                       textColor: AppColors.textPrimary,
                       onTap: () {
-                        // TODO: Open the conversation with this advocate.
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              name: booking.name,
+                              peerId: booking.advocateId.isEmpty
+                                  ? null
+                                  : booking.advocateId,
+                              online: true,
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),
+                  if (booking.canComplete) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ActionPill(
+                        label: 'Mark Done',
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.textPrimary,
+                            AppColors.gradientDarkEnd,
+                          ],
+                        ),
+                        textColor: AppColors.white,
+                        onTap: onComplete,
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   Expanded(
                     child: _ActionPill(

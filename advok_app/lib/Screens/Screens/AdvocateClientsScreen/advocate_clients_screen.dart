@@ -1,12 +1,65 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
-import '../AdvocateCasesScreen/advocate_cases_screen.dart'
-    show CaseBadge, advocateCases;
-import '../AdvocateCasesScreen/case_details_screen.dart';
-import '../AdvocateListScreen/advocate_list_screen.dart' show InitialsAvatar;
-import 'client_directory.dart';
+import '../AdvocateCasesScreen/advocate_cases_screen.dart' show CaseBadge;
+import '../AdvocateListScreen/advocate_list_screen.dart'
+    show InitialsAvatar, decodePhotoDataUrl;
+import '../MessagesScreen/chat_screen.dart';
+
+const List<String> _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// A client relationship from the backend's /clients response — created when
+/// this advocate accepted the client's consultation request.
+class AdvocateClient {
+  const AdvocateClient({
+    required this.id,
+    required this.name,
+    required this.matter,
+    required this.joined,
+    required this.sessions,
+    required this.openCases,
+    this.photoBytes,
+  });
+
+  factory AdvocateClient.fromApi(Map<String, dynamic> json) {
+    final since = DateTime.tryParse(json['since'] as String? ?? '');
+    final openCases = (json['openCases'] as num?)?.toInt() ?? 0;
+    final kind = json['consultationType'] as String?;
+    final matter = openCases > 0
+        ? '$openCases open case${openCases == 1 ? '' : 's'}'
+        : switch (kind) {
+            'office_visit' => 'Office visit consultation',
+            'phone_call' => 'Phone consultation',
+            'video_call' => 'Video consultation',
+            _ => 'Consultation client',
+          };
+    return AdvocateClient(
+      id: json['clientId'] as String? ?? '',
+      name: json['clientName'] as String? ?? 'Client',
+      matter: matter,
+      joined: since == null ? '—' : '${_months[since.month - 1]} ${since.day}',
+      sessions: (json['sessions'] as num?)?.toInt() ?? 0,
+      openCases: openCases,
+      photoBytes: decodePhotoDataUrl(json['clientPhoto'] as String?),
+    );
+  }
+
+  final String id;
+  final String name;
+  final String matter;
+  final String joined;
+  final int sessions;
+  final int openCases;
+  final Uint8List? photoBytes;
+}
 
 class AdvocateClientsScreen extends StatefulWidget {
   const AdvocateClientsScreen({super.key, this.onBack});
@@ -17,9 +70,22 @@ class AdvocateClientsScreen extends StatefulWidget {
   State<AdvocateClientsScreen> createState() => _AdvocateClientsScreenState();
 }
 
-class _AdvocateClientsScreenState extends State<AdvocateClientsScreen> {
+class _AdvocateClientsScreenState extends State<AdvocateClientsScreen> with RealtimeRefresh {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
+
+  List<AdvocateClient> _clients = [];
+  bool _loading = true;
+  String _loadError = '';
+
+  @override
+  void initState() {
+    super.initState();
+    listenRealtime({'clients', 'bookings', 'cases'}, (_) {
+      _load();
+    });
+    _load();
+  }
 
   @override
   void dispose() {
@@ -27,10 +93,28 @@ class _AdvocateClientsScreenState extends State<AdvocateClientsScreen> {
     super.dispose();
   }
 
-  List<AdvocateClient> _filter(List<AdvocateClient> clients) {
-    if (_query.isEmpty) return clients;
+  Future<void> _load() async {
+    try {
+      final result = await ApiService.fetchClients();
+      if (!mounted) return;
+      setState(() {
+        _clients = result.map(AdvocateClient.fromApi).toList();
+        _loadError = '';
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  List<AdvocateClient> get _filtered {
+    if (_query.isEmpty) return _clients;
     final query = _query.toLowerCase();
-    return clients
+    return _clients
         .where((c) =>
             c.name.toLowerCase().contains(query) ||
             c.matter.toLowerCase().contains(query))
@@ -39,44 +123,50 @@ class _AdvocateClientsScreenState extends State<AdvocateClientsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final clients = _filtered;
     return Column(
       children: [
         _buildHeader(),
         _buildSearchField(),
         Expanded(
-          child: ListenableBuilder(
-            listenable: ClientDirectory.instance,
-            builder: (context, _) {
-              final clients = _filter(ClientDirectory.instance.clients);
-              if (clients.isEmpty) {
-                if (_query.isNotEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No clients found',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textGrey,
-                      ),
-                    ),
-                  );
-                }
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                  children: [_buildEmptyState()],
-                );
-              }
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                children: [
-                  for (int i = 0; i < clients.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 12),
-                    _ClientCard(client: clients[i]),
-                  ],
-                ],
-              );
-            },
-          ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: clients.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                          children: [
+                            if (_query.isNotEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 48),
+                                child: Center(
+                                  child: Text(
+                                    'No clients found',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textGrey,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              _buildEmptyState(),
+                          ],
+                        )
+                      : ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                          children: [
+                            for (int i = 0; i < clients.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 12),
+                              _ClientCard(client: clients[i]),
+                            ],
+                          ],
+                        ),
+                ),
         ),
       ],
     );
@@ -112,10 +202,12 @@ class _AdvocateClientsScreenState extends State<AdvocateClientsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Clients will appear here once you accept client requests.',
+          Text(
+            _loadError.isNotEmpty
+                ? _loadError
+                : 'Clients will appear here once you accept client requests.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
+            style: const TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
           ),
         ],
       ),
@@ -233,12 +325,14 @@ class _ClientCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          final matches =
-              advocateCases.where((c) => c.title == client.matter).toList();
-          if (matches.isEmpty) return;
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => CaseDetailsScreen(caseData: matches.first),
+              builder: (_) => ChatScreen(
+                name: client.name,
+                peerId: client.id,
+                online: true,
+                specialty: client.matter,
+              ),
             ),
           );
         },
@@ -258,9 +352,9 @@ class _ClientCard extends StatelessWidget {
                   border: Border.all(color: AppColors.borderGrey, width: 1.4),
                 ),
                 child: ClipOval(
-                  child: client.avatar.isEmpty
+                  child: client.photoBytes == null
                       ? InitialsAvatar(name: client.name, size: 52)
-                      : Image.asset(client.avatar, fit: BoxFit.cover),
+                      : Image.memory(client.photoBytes!, fit: BoxFit.cover),
                 ),
               ),
               const SizedBox(width: 16),
@@ -285,8 +379,10 @@ class _ClientCard extends StatelessWidget {
                           ),
                         ),
                         CaseBadge(
-                          label: client.status.label,
-                          color: client.status.badgeColor,
+                          label: client.openCases > 0 ? 'Active' : 'Client',
+                          color: client.openCases > 0
+                              ? const Color(0xFF2A2A2A)
+                              : const Color(0xFF999999),
                         ),
                       ],
                     ),

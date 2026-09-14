@@ -36,6 +36,8 @@ class LegalTerms {
     this.addHearingLabel = 'Add Hearing',
     this.hearingInputHint = 'Hearing case / court…',
     this.hearingNoun = 'hearing',
+    this.hearingStatusLabel = 'Hearing',
+    this.hearingsLabel = 'Hearings',
     this.practiceAreaHint = 'e.g. Civil, Criminal, Family, Property',
     this.practiceAreas = const [
       'Criminal Law',
@@ -103,6 +105,8 @@ class LegalTerms {
     addHearingLabel: 'Add Court Event',
     hearingInputHint: 'Court event / case…',
     hearingNoun: 'court event',
+    hearingStatusLabel: 'Court Event',
+    hearingsLabel: 'Court Events',
     practiceAreaHint: 'e.g. Personal Injury, Immigration, Family Law',
     practiceAreas: [
       'Criminal Defense',
@@ -188,6 +192,13 @@ class LegalTerms {
   final String addHearingLabel;
   final String hearingInputHint;
   final String hearingNoun;
+
+  /// The case-status badge for a case that is at the court-appearance stage:
+  /// "Hearing" (India) or "Court Event" (US).
+  final String hearingStatusLabel;
+
+  /// Plural section/tab headings: "Hearings" (India) or "Court Events" (US).
+  final String hearingsLabel;
 
   final String practiceAreaHint;
 

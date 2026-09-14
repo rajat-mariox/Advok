@@ -1,6 +1,197 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/ui';
-import { CONSULTATION_TYPES, LEGAL_CATEGORIES } from '../utils/seed';
+import {
+  fetchPricing,
+  fetchSupportContact,
+  updatePricing,
+  updateSupportContact,
+  type ConsultationPricing,
+  type SupportContact,
+} from '../utils/backend';
+import { LEGAL_CATEGORIES } from '../utils/seed';
+
+const SUPPORT_FIELDS: { key: keyof SupportContact; label: string; hint: string }[] = [
+  { key: 'email', label: 'Support Email', hint: 'Opens the mail app from "Email Us"' },
+  { key: 'phone', label: 'Support Phone', hint: 'Dialled from "Call Support"' },
+  { key: 'hours', label: 'Support Hours', hint: 'Shown under the support team card' },
+  { key: 'responseNote', label: 'Response Note', hint: 'Shown under "Contact Support"' },
+];
+
+/** Contact details shown on the app's Help & Support screen. */
+function SupportContactCard() {
+  const [contact, setContact] = useState<SupportContact | null>(null);
+  const [drafts, setDrafts] = useState<SupportContact>({
+    email: '',
+    phone: '',
+    hours: '',
+    responseNote: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    fetchSupportContact()
+      .then((c) => {
+        setContact(c);
+        setDrafts(c);
+      })
+      .catch(() => setNote('Could not load support contact from the backend.'));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setNote('');
+    try {
+      const saved = await updateSupportContact(drafts);
+      setContact(saved);
+      setDrafts(saved);
+      setNote('Saved — the app’s Help & Support screen shows the new details immediately.');
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Failed to save support contact');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 20 }}>
+      <div className="section-title" style={{ marginBottom: 4 }}>Help & Support Contact</div>
+      <div className="cell-sub" style={{ marginBottom: 12 }}>
+        Contact details shown to every role on the app's Help & Support screen.
+      </div>
+      {SUPPORT_FIELDS.map((f) => (
+        <div key={f.key} style={{ marginBottom: 12 }}>
+          <label className="field-label">{f.label}</label>
+          <input
+            className="input"
+            value={drafts[f.key]}
+            disabled={!contact}
+            placeholder={f.hint}
+            onChange={(e) => setDrafts((d) => ({ ...d, [f.key]: e.target.value }))}
+          />
+          <div className="cell-sub" style={{ marginTop: 3, fontSize: 11 }}>{f.hint}</div>
+        </div>
+      ))}
+      <button
+        className="btn-primary"
+        style={{ width: '100%', marginTop: 4 }}
+        disabled={!contact || saving}
+        onClick={save}
+      >
+        {saving ? 'Saving…' : 'Save Support Contact'}
+      </button>
+      {note && (
+        <div className="cell-sub" style={{ marginTop: 10, fontWeight: 600 }}>
+          {note}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Clients consult by voice only — video calls and office visits are not
+// offered on the platform.
+const CONSULTATION_TYPE_INFO = [
+  { kind: 'phone_call', title: 'Attorney Voice Call', subtitle: 'Voice consultation with an individual attorney' },
+  {
+    kind: 'law_firm_phone_call',
+    title: 'Law Firm Voice Call',
+    subtitle: 'Voice consultation booked with a law firm or one of its attorneys (a firm can set its own rate)',
+  },
+] as const;
+
+/** Editable consultation fees, loaded from and saved to the backend. */
+function ConsultationPricingCard() {
+  const [pricing, setPricing] = useState<ConsultationPricing | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    fetchPricing()
+      .then((p) => {
+        setPricing(p);
+        setDrafts(
+          Object.fromEntries(
+            CONSULTATION_TYPE_INFO.map((t) => [t.kind, String(p[t.kind])]),
+          ),
+        );
+      })
+      .catch(() => setNote('Could not load pricing from the backend.'));
+  }, []);
+
+  const save = async () => {
+    const next = Object.fromEntries(
+      CONSULTATION_TYPE_INFO.map((t) => [t.kind, Number(drafts[t.kind])]),
+    ) as Partial<ConsultationPricing>;
+    if (Object.values(next).some((v) => !Number.isFinite(v) || v! < 0)) {
+      setNote('Prices must be valid numbers.');
+      return;
+    }
+    setSaving(true);
+    setNote('');
+    try {
+      const saved = await updatePricing(next as ConsultationPricing);
+      setPricing(saved);
+      setNote('Saved — the app shows the new prices immediately.');
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'Failed to save pricing');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card" style={{ padding: 20 }}>
+      <div className="section-title" style={{ marginBottom: 4 }}>Consultation Types</div>
+      <div className="cell-sub" style={{ marginBottom: 12 }}>
+        Fees shown to clients in the app's booking flow.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {CONSULTATION_TYPE_INFO.map((t) => (
+          <div
+            key={t.kind}
+            className="card-white row"
+            style={{ padding: '12px 14px', justifyContent: 'space-between', gap: 12 }}
+          >
+            <div>
+              <div className="cell-strong">{t.title}</div>
+              <div className="cell-sub">{t.subtitle}</div>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <span style={{ fontWeight: 800, fontSize: 15 }}>$</span>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={drafts[t.kind] ?? ''}
+                disabled={!pricing}
+                onChange={(e) =>
+                  setDrafts((d) => ({ ...d, [t.kind]: e.target.value }))
+                }
+                style={{ width: 90, height: 36, textAlign: 'right', fontWeight: 700 }}
+              />
+              <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-grey)' }}>/session</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn-primary"
+        style={{ width: '100%', marginTop: 14 }}
+        disabled={!pricing || saving}
+        onClick={save}
+      >
+        {saving ? 'Saving…' : 'Save Pricing'}
+      </button>
+      {note && (
+        <div className="cell-sub" style={{ marginTop: 10, fontWeight: 600 }}>
+          {note}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -76,7 +267,7 @@ export default function SettingsPage() {
             <div className="section-title" style={{ marginBottom: 6 }}>Platform</div>
             <SettingRow
               title="Auto-approve Verified Bar IDs"
-              sub="Skip manual review when bar registry match succeeds"
+              sub="Skip manual review when the state bar lookup succeeds"
               on={autoApprove}
               onToggle={() => setAutoApprove(!autoApprove)}
             />
@@ -106,30 +297,16 @@ export default function SettingsPage() {
             <input className="input" defaultValue="$5.00" style={{ marginBottom: 14 }} />
             <label className="field-label">Tax Rate</label>
             <input className="input" defaultValue="8.5%" style={{ marginBottom: 14 }} />
-            <label className="field-label">Advocate Commission</label>
+            <label className="field-label">Attorney Commission</label>
             <input className="input" defaultValue="10%" style={{ marginBottom: 18 }} />
             <button className="btn-primary" style={{ width: '100%' }}>Save Changes</button>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ padding: 20 }}>
-            <div className="section-title" style={{ marginBottom: 12 }}>Consultation Types</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {CONSULTATION_TYPES.map((t) => (
-                <div key={t.title} className="card-white row" style={{ padding: '12px 14px', justifyContent: 'space-between' }}>
-                  <div>
-                    <div className="cell-strong">{t.title}</div>
-                    <div className="cell-sub">{t.subtitle}</div>
-                  </div>
-                  <span style={{ fontWeight: 800, fontSize: 15 }}>
-                    ${t.price}
-                    <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-grey)' }}>/session</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ConsultationPricingCard />
+
+          <SupportContactCard />
 
           <div className="card" style={{ padding: 20 }}>
             <div className="section-title" style={{ marginBottom: 12 }}>Legal Categories</div>

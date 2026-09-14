@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconX } from '../components/Icon';
-import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
+import {
+  Avatar,
+  Badge,
+  ChipList,
+  DetailGrid,
+  DetailSection,
+  Drawer,
+  DrawerHero,
+  FilterChips,
+  InfoRow,
+  ListItem,
+  ListEmpty,
+  PageHeader,
+} from '../components/ui';
 import { authFetch } from '../utils/auth';
 import { deleteBackendUser } from '../utils/backend';
+import { useRealtime } from '../utils/realtime';
 
 type RegRole = 'advocate' | 'law_student' | 'law_firm';
 type RegStatus = 'onboarding_required' | 'pending_approval' | 'approved' | 'rejected';
@@ -22,7 +36,7 @@ interface Registration {
 }
 
 const ROLE_TABS: { key: RegRole; label: string }[] = [
-  { key: 'advocate', label: 'Advocates' },
+  { key: 'advocate', label: 'Attorneys' },
   { key: 'law_student', label: 'Law Students' },
   { key: 'law_firm', label: 'Law Firms' },
 ];
@@ -37,17 +51,21 @@ const STATUS_LABEL: Record<RegStatus, string> = {
 };
 
 function displayName(r: Registration): string {
-  if (r.role === 'advocate') return r.profile?.professional?.fullName ?? 'Advocate';
+  if (r.role === 'advocate') return r.profile?.professional?.fullName ?? 'Attorney';
   if (r.role === 'law_student') return r.profile?.fullName ?? 'Law Student';
   return r.profile?.firmName ?? 'Law Firm';
 }
 
+function attorneyType(p: any): string {
+  return p?.firmRole || (p?.advocateType === 'senior' ? 'Senior Attorney' : 'Associate Attorney');
+}
+
 function summary(r: Registration): string {
   if (r.role === 'advocate') {
-    return `${r.profile?.advocateType === 'senior' ? 'Senior' : 'Junior'} · ${r.profile?.professional?.practiceArea ?? '—'}`;
+    return `${attorneyType(r.profile)} · ${r.profile?.professional?.practiceArea ?? '—'}`;
   }
   if (r.role === 'law_student') return `${r.profile?.college ?? '—'} · ${r.profile?.course ?? '—'}`;
-  return `${r.profile?.city ?? '—'} · ${r.profile?.lawyers?.length ?? 0} lawyers listed`;
+  return `${r.profile?.city ?? '—'} · ${r.profile?.lawyers?.length ?? 0} attorneys listed`;
 }
 
 function formatDate(iso?: string): string {
@@ -88,6 +106,9 @@ export default function ApprovalsPage() {
   useEffect(() => {
     load();
   }, [load]);
+  useRealtime(['registrations', 'users'], () => {
+    void load();
+  });
 
   const pendingCount = (role: RegRole) =>
     registrations.filter((r) => r.role === role && r.status === 'pending_approval').length;
@@ -208,196 +229,267 @@ export default function ApprovalsPage() {
 
       {selected && (
         <Drawer
+          wide
           title={`${ROLE_TABS.find((t) => t.key === selected.role)?.label.replace(/s$/, '')} Registration`}
           onClose={() => setSelectedId(null)}
           footer={
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {selected.status === 'pending_approval' ? (
-              rejecting ? (
-                <div>
-                  <label className="field-label">Rejection Reason</label>
-                  <input
-                    className="input"
-                    autoFocus
-                    placeholder="e.g. Bar registration number could not be verified"
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    style={{ marginBottom: 10 }}
-                  />
+              {selected.status === 'pending_approval' ? (
+                rejecting ? (
+                  <div>
+                    <label className="field-label">Rejection Reason</label>
+                    <input
+                      className="input"
+                      autoFocus
+                      placeholder="e.g. Bar license number could not be verified"
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      style={{ marginBottom: 10 }}
+                    />
+                    <div className="row" style={{ gap: 10 }}>
+                      <button
+                        className="btn-danger"
+                        style={{ flex: 1, height: 44, borderRadius: 14, fontSize: 13.5 }}
+                        disabled={!rejectReason.trim()}
+                        onClick={() => act(selected.id, 'reject', rejectReason.trim())}
+                      >
+                        Confirm Reject
+                      </button>
+                      <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setRejecting(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <div className="row" style={{ gap: 10 }}>
+                    <button className="btn-primary" style={{ flex: 1 }} onClick={() => act(selected.id, 'approve')}>
+                      <IconCheck /> Approve
+                    </button>
                     <button
                       className="btn-danger"
-                      style={{ flex: 1, height: 44, borderRadius: 14 }}
-                      disabled={!rejectReason.trim()}
-                      onClick={() => act(selected.id, 'reject', rejectReason.trim())}
+                      style={{ flex: 1, height: 44, borderRadius: 14, fontSize: 13.5, gap: 8 }}
+                      onClick={() => setRejecting(true)}
                     >
-                      Confirm Reject
-                    </button>
-                    <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setRejecting(false)}>
-                      Cancel
+                      <IconX /> Reject
                     </button>
                   </div>
-                </div>
+                )
               ) : (
-                <div className="row" style={{ gap: 10 }}>
-                  <button className="btn-primary" style={{ flex: 1 }} onClick={() => act(selected.id, 'approve')}>
-                    <IconCheck /> Approve
-                  </button>
-                  <button
-                    className="btn-danger"
-                    style={{ flex: 1, height: 44, borderRadius: 14 }}
-                    onClick={() => setRejecting(true)}
-                  >
-                    <IconX /> Reject
-                  </button>
-                </div>
-              )
-            ) : (
-              <button className="btn-secondary" style={{ width: '100%' }} onClick={() => act(selected.id, 'reopen')}>
-                Move Back to Review
+                <button className="btn-secondary" style={{ width: '100%' }} onClick={() => act(selected.id, 'reopen')}>
+                  Move Back to Review
+                </button>
+              )}
+              <button
+                className="btn-danger"
+                style={{ width: '100%', height: 40, borderRadius: 14 }}
+                onClick={() => remove(selected.id)}
+              >
+                Delete Registration
               </button>
-            )}
-            <button
-              className="btn-danger"
-              style={{ width: '100%', height: 40, borderRadius: 14 }}
-              onClick={() => remove(selected.id)}
-            >
-              Delete Registration
-            </button>
             </div>
           }
         >
-          <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={displayName(selected)} photo={selected.profile?.photo} size={56} square />
-            <div>
-              <div className="row" style={{ gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{displayName(selected)}</span>
-                <Badge label={STATUS_LABEL[selected.status]} />
-              </div>
-              <div className="cell-sub" style={{ fontSize: 12.5 }}>{summary(selected)}</div>
-            </div>
-          </div>
+          <DrawerHero
+            name={displayName(selected)}
+            photo={selected.profile?.photo}
+            square
+            badge={STATUS_LABEL[selected.status]}
+            subtitle={summary(selected)}
+          />
 
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Account</div>
-          <InfoRow k="Phone" v={`${selected.countryCode ?? ''} ${selected.phone ?? '—'}`} />
-          <InfoRow k="Registered" v={formatDate(selected.createdAt)} />
-          <InfoRow k="Onboarding Submitted" v={formatDate(selected.onboardedAt)} />
-          {selected.reviewedAt && <InfoRow k="Reviewed" v={formatDate(selected.reviewedAt)} />}
           {selected.status === 'rejected' && (
-            <InfoRow k="Rejection Reason" v={selected.rejectionReason ?? '—'} />
+            <div className="note-box">
+              <span className="k">Rejection Reason</span>
+              {selected.rejectionReason || 'No reason recorded.'}
+            </div>
           )}
 
-          {selected.role === 'advocate' && selected.profile && (
-            <>
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Professional Details</div>
-              <InfoRow k="Full Name" v={selected.profile.professional?.fullName ?? '—'} />
-              <InfoRow
-                k="Type"
-                v={
-                  selected.profile.firmRole ||
-                  (selected.profile.advocateType === 'senior' ? 'Senior Advocate' : 'Junior Advocate')
-                }
-              />
-              {selected.profile.yearsInPractice && (
-                <InfoRow k="Years in Practice" v={selected.profile.yearsInPractice} />
-              )}
-              {selected.profile.advocateType === 'junior' && !selected.profile.firmRole && (
-                <InfoRow k="Senior Advocate" v={selected.profile.professional?.seniorAdvocateName || '—'} />
-              )}
-              <InfoRow k="Email" v={selected.profile.professional?.email ?? '—'} />
-              {(selected.profile.professional?.barAdmissions ?? []).length > 0 ? (
-                <>
-                  {selected.profile.professional.barAdmissions.map((a: any, i: number) => (
-                    <InfoRow
-                      key={i}
-                      k={`Bar Admission ${i + 1}`}
-                      v={`${a.state} — #${a.barNumber} (${a.licenseStatus})`}
+          <DetailSection title="Account" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Login Phone', v: `${selected.countryCode ?? ''} ${selected.phone ?? '—'}`.trim() },
+                { k: 'Country', v: selected.country ?? '—' },
+                { k: 'Registered', v: formatDate(selected.createdAt) },
+                { k: 'Submitted', v: formatDate(selected.onboardedAt) },
+                ...(selected.reviewedAt ? [{ k: 'Reviewed', v: formatDate(selected.reviewedAt) }] : []),
+              ]}
+            />
+          </DetailSection>
+
+          {selected.role === 'advocate' && selected.profile && (() => {
+            const p = selected.profile;
+            const pro = p.professional ?? {};
+            const bars: any[] = pro.barAdmissions ?? [];
+            const federal: string[] = pro.federalCourtAdmissions ?? [];
+            return (
+              <>
+                <DetailSection title="Professional Details" flush>
+                  <DetailGrid
+                    cells={[
+                      { k: 'Full Name', v: pro.fullName ?? '—' },
+                      { k: 'Firm Role', v: attorneyType(p) },
+                      { k: 'Practice Area', v: pro.practiceArea ?? '—' },
+                      { k: 'Email', v: pro.email ?? '—' },
+                      ...(p.yearsInPractice ? [{ k: 'Years in Practice', v: p.yearsInPractice }] : []),
+                      ...(p.advocateType === 'junior' && !p.firmRole
+                        ? [{ k: 'Supervising Attorney', v: pro.seniorAdvocateName || '—' }]
+                        : []),
+                    ]}
+                  />
+                </DetailSection>
+
+                <DetailSection
+                  title="Bar Admissions"
+                  aside={
+                    bars.length > 0 ? (
+                      <span className="cell-sub" style={{ marginTop: 0 }}>
+                        {bars.length} {bars.length > 1 ? 'states' : 'state'}
+                      </span>
+                    ) : undefined
+                  }
+                  flush
+                >
+                  {bars.length > 0 ? (
+                    <>
+                      {bars.map((a: any, i: number) => (
+                        <ListItem
+                          key={i}
+                          title={a.state || '—'}
+                          sub={`Bar #${a.barNumber || '—'}`}
+                          right={<Badge label={a.licenseStatus || 'Unknown'} />}
+                        />
+                      ))}
+                      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--divider)' }}>
+                        <span className="detail-cell k" style={{ display: 'block', background: 'transparent', padding: 0, marginBottom: 6 }}>
+                          Federal Court Admissions
+                        </span>
+                        <ChipList items={federal} empty="None listed" />
+                      </div>
+                    </>
+                  ) : (
+                    <DetailGrid
+                      cells={[
+                        {
+                          k: 'State Bar Number',
+                          v: pro.licenseNumber ?? pro.barRegistrationNumber ?? '—',
+                        },
+                        { k: 'Primary Court', v: pro.primaryCourt ?? '—' },
+                      ]}
                     />
-                  ))}
-                  <InfoRow
-                    k="Federal Courts"
-                    v={(selected.profile.professional?.federalCourtAdmissions ?? []).join(', ') || '—'}
-                  />
-                </>
-              ) : (
-                <>
-                  <InfoRow
-                    k={selected.country === 'United States' ? 'State Bar Number' : 'Bar Registration No.'}
-                    v={
-                      selected.profile.professional?.licenseNumber ??
-                      selected.profile.professional?.barRegistrationNumber ??
-                      '—'
-                    }
-                  />
-                  <InfoRow k="Primary Court" v={selected.profile.professional?.primaryCourt ?? '—'} />
-                </>
-              )}
-              <InfoRow k="Practice Area" v={selected.profile.professional?.practiceArea ?? '—'} />
+                  )}
+                </DetailSection>
 
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Practice Location</div>
-              <InfoRow k="State" v={selected.profile.location?.state ?? '—'} />
-              <InfoRow k="District / City" v={selected.profile.location?.district ?? '—'} />
-              <InfoRow k="Office Address" v={selected.profile.location?.officeAddress || '—'} />
+                <DetailSection title="Practice Location" flush>
+                  <DetailGrid
+                    cells={[
+                      { k: 'State', v: p.location?.state ?? '—' },
+                      { k: 'City / County', v: p.location?.district ?? '—' },
+                    ]}
+                  />
+                  <div style={{ padding: '0 14px 12px' }}>
+                    <div className="detail-cell">
+                      <span className="k">Office Address</span>
+                      <span className="v">{p.location?.officeAddress || '—'}</span>
+                    </div>
+                  </div>
+                </DetailSection>
 
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Purpose & Schedule</div>
-              <InfoRow k="Purposes" v={(selected.profile.purposes ?? []).join(', ') || '—'} />
-              <InfoRow k="Working Days" v={(selected.profile.schedule?.workingDays ?? []).join(', ') || '—'} />
-              <InfoRow
-                k="Available Time"
-                v={
-                  selected.profile.schedule?.startTime
-                    ? `${selected.profile.schedule.startTime} – ${selected.profile.schedule.endTime}`
-                    : '—'
-                }
-              />
-            </>
-          )}
+                <DetailSection title="Purpose on Advok">
+                  <div style={{ padding: '8px 0' }}>
+                    <ChipList items={p.purposes ?? []} empty="Not specified" />
+                  </div>
+                </DetailSection>
+
+                <DetailSection title="Availability">
+                  <InfoRow k="Working Days" v={<ChipList items={p.schedule?.workingDays ?? []} />} />
+                  <InfoRow
+                    k="Hours"
+                    v={p.schedule?.startTime ? `${p.schedule.startTime} – ${p.schedule.endTime}` : '—'}
+                  />
+                </DetailSection>
+              </>
+            );
+          })()}
 
           {selected.role === 'law_student' && selected.profile && (
-            <>
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Student Details</div>
-              <InfoRow k="Full Name" v={selected.profile.fullName ?? '—'} />
-              <InfoRow k="College / University" v={selected.profile.college ?? '—'} />
-              <InfoRow k="Course" v={selected.profile.course ?? '—'} />
-              <InfoRow k="Academic Year" v={selected.profile.academicYear ?? '—'} />
-              <InfoRow k="College ID Card" v={selected.profile.idCardFileName || 'Not uploaded'} />
-            </>
-          )}
-
-          {selected.role === 'law_firm' && selected.profile && (
-            <>
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Firm Details</div>
-              <InfoRow k="Firm Name" v={selected.profile.firmName ?? '—'} />
-              <InfoRow k="Founded" v={selected.profile.foundedYear ?? '—'} />
-              <InfoRow k="Contact Person" v={selected.profile.contactPerson ?? '—'} />
-              <InfoRow k="Official Email" v={selected.profile.officialEmail ?? '—'} />
-              <InfoRow k="Main Phone" v={selected.profile.mainPhone ?? '—'} />
-              <InfoRow
-                k="Address"
-                v={[selected.profile.addressLine1, selected.profile.addressLine2, selected.profile.city, selected.profile.state, selected.profile.zip]
-                  .filter(Boolean)
-                  .join(', ')}
+            <DetailSection title="Student Details" flush>
+              <DetailGrid
+                cells={[
+                  { k: 'Full Name', v: selected.profile.fullName ?? '—' },
+                  { k: 'Law School', v: selected.profile.college ?? '—' },
+                  { k: 'Degree Program', v: selected.profile.course ?? '—' },
+                  { k: 'Year', v: selected.profile.academicYear ?? '—' },
+                  { k: 'Student ID Card', v: selected.profile.idCardFileName || 'Not uploaded' },
+                ]}
               />
-              <InfoRow k="Total Lawyers" v={selected.profile.totalLawyers || '—'} />
-
-              <div className="eyebrow" style={{ margin: '18px 0 4px' }}>
-                Legal Team ({selected.profile.lawyers?.length ?? 0})
-              </div>
-              {(selected.profile.lawyers ?? []).map((l: any, i: number) => (
-                <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--fill-grey)' }}>
-                  <div className="cell-strong">{l.fullName || `Lawyer ${i + 1}`}</div>
-                  <div className="cell-sub">
-                    {[l.designation, l.barLicense, l.yearsExperience ? `${l.yearsExperience} yrs` : '']
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                  {(l.expertise ?? []).length > 0 && (
-                    <div className="cell-sub" style={{ marginTop: 2 }}>{l.expertise.join(', ')}</div>
-                  )}
-                </div>
-              ))}
-            </>
+            </DetailSection>
           )}
+
+          {selected.role === 'law_firm' && selected.profile && (() => {
+            const p = selected.profile;
+            const lawyers: any[] = p.lawyers ?? [];
+            return (
+              <>
+                <DetailSection title="Firm Details" flush>
+                  <DetailGrid
+                    cells={[
+                      { k: 'Firm Name', v: p.firmName ?? '—' },
+                      { k: 'Founded', v: p.foundedYear ?? '—' },
+                      { k: 'Contact Person', v: p.contactPerson ?? '—' },
+                      { k: 'Official Email', v: p.officialEmail ?? '—' },
+                      { k: 'Main Phone', v: p.mainPhone ?? '—' },
+                      { k: 'Reception', v: p.receptionNumber || '—' },
+                      { k: 'Total Attorneys', v: p.totalLawyers || lawyers.length || '—' },
+                      { k: 'Logo', v: p.logoFileName || 'Not uploaded' },
+                    ]}
+                  />
+                  <div style={{ padding: '0 14px 12px' }}>
+                    <div className="detail-cell">
+                      <span className="k">Address</span>
+                      <span className="v">
+                        {[p.addressLine1, p.addressLine2, p.city, p.state, p.zip].filter(Boolean).join(', ') || '—'}
+                      </span>
+                    </div>
+                  </div>
+                </DetailSection>
+
+                <DetailSection
+                  title="Legal Team"
+                  aside={<span className="cell-sub" style={{ marginTop: 0 }}>{lawyers.length} listed</span>}
+                  flush
+                >
+                  {lawyers.length === 0 ? (
+                    <ListEmpty text="No attorneys added." />
+                  ) : (
+                    lawyers.map((l: any, i: number) => (
+                      <div key={i} className="list-item" style={{ alignItems: 'stretch', flexDirection: 'column', gap: 8 }}>
+                        <div className="row" style={{ justifyContent: 'space-between', gap: 10 }}>
+                          <div className="list-item-main">
+                            <div className="list-item-title">{l.fullName || `Attorney ${i + 1}`}</div>
+                            <div className="list-item-sub">
+                              {[l.designation || 'Associate', l.yearsExperience ? `${l.yearsExperience} yrs experience` : '']
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          </div>
+                          <Badge label={l.licenseStatus || 'Active'} />
+                        </div>
+                        <DetailGrid
+                          cells={[
+                            { k: 'State Bar', v: [l.barState, l.barLicense ? `#${l.barLicense}` : ''].filter(Boolean).join(' ') || '—' },
+                            { k: 'License Status', v: l.licenseStatus || 'Active' },
+                            { k: 'Email', v: l.email || '—' },
+                            { k: 'Phone', v: l.phone || '—' },
+                          ]}
+                        />
+                        {(l.expertise ?? []).length > 0 && <ChipList items={l.expertise} />}
+                      </div>
+                    ))
+                  )}
+                </DetailSection>
+              </>
+            );
+          })()}
         </Drawer>
       )}
     </div>
