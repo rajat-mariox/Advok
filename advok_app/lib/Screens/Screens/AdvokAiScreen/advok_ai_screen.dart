@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 
-const List<String> _suggestions = [
+/// Fallback chips shown until the admin-managed list loads.
+const List<String> _defaultSuggestions = [
   'What are my rights if I am arrested?',
   'How long do criminal cases take?',
   'Can I sue for wrongful termination?',
@@ -13,7 +15,15 @@ const List<String> _suggestions = [
 ];
 
 class AdvokAiScreen extends StatefulWidget {
-  const AdvokAiScreen({super.key});
+  const AdvokAiScreen({super.key, this.initialPrompt, this.asSheet = false});
+
+  /// Sent automatically when the screen opens, e.g. "Brief Miranda v.
+  /// Arizona" from a case study's AI Case Brief card.
+  final String? initialPrompt;
+
+  /// True when shown inside [showAdvokAiSheet]: drag handle, no back button,
+  /// rounded top, and a greeting from the assistant's avatar.
+  final bool asSheet;
 
   @override
   State<AdvokAiScreen> createState() => _AdvokAiScreenState();
@@ -24,6 +34,33 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<({String text, bool fromUser})> _messages = [];
 
+  /// True while a reply is in flight — shows the typing bubble and blocks
+  /// double-sends.
+  bool _sending = false;
+
+  /// Suggested prompts from the admin panel (active ones only).
+  List<String> _suggestions = _defaultSuggestions;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuggestions();
+    final prompt = widget.initialPrompt?.trim();
+    if (prompt != null && prompt.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _send(prompt));
+    }
+  }
+
+  Future<void> _loadSuggestions() async {
+    try {
+      final list = await ApiService.fetchAiSuggestions();
+      if (!mounted) return;
+      setState(() => _suggestions = list);
+    } catch (_) {
+      // Keep the defaults if the backend is unreachable.
+    }
+  }
+
   @override
   void dispose() {
     _inputController.dispose();
@@ -31,20 +68,55 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
     super.dispose();
   }
 
-  void _send(String text) {
+  Future<void> _send(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty || _sending) return;
+    _inputController.clear();
     setState(() {
       _messages.add((text: trimmed, fromUser: true));
-      // Placeholder reply until the AI backend is connected.
-      _messages.add((
-        text:
-            'Thanks for your question! AI responses will appear here once '
-            'the ADVOK AI backend is connected.',
-        fromUser: false,
-      ));
+      _sending = true;
     });
-    _inputController.clear();
+    _scrollToBottom();
+
+    // Send the recent conversation so follow-up questions keep context; the
+    // backend trims it further and adds the ADVOK legal-assistant rules.
+    final history = [
+      for (final m in _messages)
+        {'role': m.fromUser ? 'user' : 'assistant', 'content': m.text},
+    ];
+    String reply;
+    try {
+      reply = await ApiService.aiChat(history);
+      if (reply.isEmpty) {
+        reply = 'I could not come up with an answer just now. Please try '
+            'rephrasing your question.';
+      }
+    } on ApiException catch (e) {
+      reply = e.statusCode == 503
+          ? 'ADVOK AI is not connected yet. Please try again later.'
+          : e.statusCode == null
+              ? 'Could not reach ADVOK. Check your connection and try again.'
+              : e.message;
+    } catch (_) {
+      reply = 'Something went wrong. Please try again.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _messages.add((text: _stripMarkdown(reply), fromUser: false));
+      _sending = false;
+    });
+    _scrollToBottom();
+  }
+
+  /// The model is asked for plain text, but strip stray Markdown so the
+  /// bubble never shows literal ** or # characters.
+  static String _stripMarkdown(String s) => s
+      .replaceAll(RegExp(r'\*\*(.*?)\*\*'), r'$1')
+      .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
+      .replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '• ')
+      .trim();
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -58,6 +130,45 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final body = Column(
+      children: [
+        if (widget.asSheet)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.borderGrey,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        _buildHeader(),
+        Expanded(
+          child: _messages.isEmpty ? _buildEmptyState() : _buildMessageList(),
+        ),
+        _buildInputBar(),
+      ],
+    );
+    if (widget.asSheet) {
+      // Bottom sheet: showAdvokAiSheet already lifts the whole sheet above
+      // the keyboard with a viewInsets padding, so this Scaffold must NOT
+      // shrink its body again — doing both subtracted the keyboard height
+      // twice and overflowed the header/composer on small screens.
+      return ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: MediaQuery.removeViewInsets(
+          context: context,
+          removeBottom: true,
+          child: Scaffold(
+            backgroundColor: AppColors.white,
+            resizeToAvoidBottomInset: false,
+            body: body,
+          ),
+        ),
+      );
+    }
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark.copyWith(
         statusBarColor: Colors.transparent,
@@ -65,19 +176,7 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
       ),
       child: Scaffold(
         backgroundColor: AppColors.white,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: _messages.isEmpty
-                    ? _buildEmptyState()
-                    : _buildMessageList(),
-              ),
-              _buildInputBar(),
-            ],
-          ),
-        ),
+        body: SafeArea(child: body),
       ),
     );
   }
@@ -90,8 +189,10 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
       ),
       child: Row(
         children: [
-          const CircleBackButton(),
-          const SizedBox(width: 8),
+          if (!widget.asSheet) ...[
+            const CircleBackButton(),
+            const SizedBox(width: 8),
+          ],
           Container(
             width: 36,
             height: 36,
@@ -192,14 +293,18 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              'Get general legal information based on U.S. law. ADVOK AI is '
-              'not a lawyer and does not replace advice from a licensed '
-              'attorney.',
+              widget.asSheet
+                  ? 'Hi! I\'m ADVOK AI. Ask me anything about U.S. law or '
+                      'using ADVOK, or pick a question below. I give general '
+                      'legal information, not legal advice.'
+                  : 'Get general legal information based on U.S. law. ADVOK '
+                      'AI is not a lawyer and does not replace advice from a '
+                      'licensed attorney.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 height: 21 / 14,
                 letterSpacing: -0.15,
@@ -251,8 +356,9 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-      itemCount: _messages.length,
+      itemCount: _messages.length + (_sending ? 1 : 0),
       itemBuilder: (_, index) {
+        if (index == _messages.length) return _buildTypingBubble();
         final message = _messages[index];
         return Align(
           alignment: message.fromUser
@@ -278,7 +384,7 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
                   ? null
                   : Border.all(color: AppColors.borderGrey),
             ),
-            child: Text(
+            child: SelectableText(
               message.text,
               style: TextStyle(
                 fontSize: 14,
@@ -292,6 +398,48 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTypingBubble() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.fillGrey,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(6),
+            bottomRight: Radius.circular(18),
+          ),
+          border: Border.all(color: AppColors.borderGrey),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.textGrey555,
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'ADVOK AI is thinking…',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: AppColors.textGrey555,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -384,4 +532,27 @@ class _AdvokAiScreenState extends State<AdvokAiScreen> {
       ),
     );
   }
+}
+
+/// Opens ADVOK AI as a chat sheet over the current screen (client home,
+/// AI banner, quick action). The sheet covers ~92% of the screen, keeps the
+/// input above the keyboard and closes with the X or a swipe down.
+Future<void> showAdvokAiSheet(BuildContext context, {String? initialPrompt}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: AppColors.black.withValues(alpha: 0.45),
+    builder: (sheetContext) => Padding(
+      // Keep the composer above the keyboard inside the sheet.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
+      child: FractionallySizedBox(
+        heightFactor: 0.92,
+        child: AdvokAiScreen(initialPrompt: initialPrompt, asSheet: true),
+      ),
+    ),
+  );
 }

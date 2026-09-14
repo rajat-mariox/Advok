@@ -177,3 +177,42 @@ export const IconUserCheck = ({ size = 18 }: IconProps) => (
     <path d="m15.5 18 2 2 4-4.5" />
   </svg>
 );
+
+export const IconEye = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const IconUserX = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="9" cy="8" r="3.4" />
+    <path d="M3.5 20c.6-3.4 2.8-5 5.5-5 1.6 0 3 .5 4.1 1.5" />
+    <path d="m16 15 5 5M21 15l-5 5" />
+  </svg>
+);
+
+export const IconUserRestore = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <circle cx="9" cy="8" r="3.4" />
+    <path d="M3.5 20c.6-3.4 2.8-5 5.5-5 1.6 0 3 .5 4.1 1.5" />
+    <path d="M15.5 17.5a3 3 0 1 0 .9-2.1" />
+    <path d="M15.5 13.5v2h2" />
+  </svg>
+);
+
+export const IconTrash = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M4 7h16" />
+    <path d="M9.5 7V4.5h5V7" />
+    <path d="M6.5 7l.8 12h9.4l.8-12" />
+    <path d="M10 11v5M14 11v5" />
+  </svg>
+);
+
+export const IconPlus = ({ size = 16 }: IconProps) => (
+  <svg {...base(size)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);

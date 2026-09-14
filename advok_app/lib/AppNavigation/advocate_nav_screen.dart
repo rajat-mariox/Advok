@@ -48,7 +48,7 @@ class _AdvocateNavScreenState extends State<AdvocateNavScreen> {
                 onMessageClientsTap: () => setState(() => _index = 2),
               ),
               AdvocateClientsScreen(onBack: () => setState(() => _index = 0)),
-              const MessagesScreen(),
+              MessagesScreen(onBack: () => setState(() => _index = 0)),
               AdvocateCasesScreen(onBack: () => setState(() => _index = 0)),
               const ProfileScreen(),
             ],

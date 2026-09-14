@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../CommonWidgets/circle_back_button.dart';
 import '../../../Utils/AppColors/app_colors.dart';
@@ -13,7 +14,42 @@ class NewsArticle {
     required this.tag,
     required this.paragraphs,
     this.related = const [],
+    this.url = '',
   });
+
+  /// Builds an article from the backend's /learning/news feed item.
+  factory NewsArticle.fromApi(Map<String, dynamic> json) {
+    final paragraphs =
+        (json['paragraphs'] as List<dynamic>? ?? []).cast<String>();
+    final excerpt = (json['excerpt'] as String? ?? '').trim();
+    return NewsArticle(
+      title: json['title'] as String? ?? '',
+      source: json['source'] as String? ?? '',
+      time: _relativeTime(json['publishedAt'] as String?),
+      tag: json['tag'] as String? ?? 'Legal News',
+      paragraphs: paragraphs.isNotEmpty
+          ? paragraphs
+          : excerpt.isNotEmpty
+              ? [excerpt]
+              : const [],
+      url: json['url'] as String? ?? '',
+    );
+  }
+
+  static String _relativeTime(String? iso) {
+    if (iso == null) return '';
+    final date = DateTime.tryParse(iso);
+    if (date == null) return '';
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 60) return '${diff.inMinutes.clamp(1, 59)}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
 
   final String title;
   final String source;
@@ -23,6 +59,9 @@ class NewsArticle {
 
   /// Titles of related case studies shown as pills.
   final List<String> related;
+
+  /// Link to the original article on the source site.
+  final String url;
 }
 
 class NewsArticleScreen extends StatefulWidget {
@@ -255,8 +294,21 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(100),
-            // TODO: open the source article once article URLs are available.
-            onTap: () {},
+            onTap: widget.article.url.isEmpty
+                ? null
+                : () async {
+                    final ok = await launchUrl(
+                      Uri.parse(widget.article.url),
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!ok && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open the article.'),
+                        ),
+                      );
+                    }
+                  },
             child: const Center(
               child: Text(
                 'Read Full Article',

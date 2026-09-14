@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,6 +41,7 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
   final TextEditingController _zipController = TextEditingController();
   String? _state;
   String? _logoFileName;
+  String? _logoDataUrl;
 
   static const int _maxLogoBytes = 2 * 1024 * 1024;
 
@@ -81,6 +84,7 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
           foundedYear: _foundedYearController.text.trim(),
           contactPersonName: _contactPersonController.text.trim(),
           logoFileName: _logoFileName,
+          logoDataUrl: _logoDataUrl,
           officialEmail: _emailController.text.trim(),
           mainPhone: _mainPhoneController.text.trim(),
           receptionNumber: _receptionController.text.trim().isEmpty
@@ -274,9 +278,11 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
   }
 
   Future<void> _pickLogoFile() async {
+    // withData so the bytes come back and can be sent as the firm's photo.
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['png', 'svg'],
+      allowedExtensions: ['png', 'jpg', 'jpeg'],
+      withData: true,
     );
     if (result == null || result.files.isEmpty || !mounted) return;
     final file = result.files.single;
@@ -286,7 +292,19 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
       );
       return;
     }
-    setState(() => _logoFileName = file.name);
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read that file. Try again.')),
+      );
+      return;
+    }
+    final ext = (file.extension ?? 'png').toLowerCase();
+    final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : 'image/png';
+    setState(() {
+      _logoFileName = file.name;
+      _logoDataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+    });
   }
 
   Widget _buildLogoUploadBox() {
@@ -414,7 +432,10 @@ class _RegisterFirmScreenState extends State<RegisterFirmScreen> {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              onTap: () => setState(() => _logoFileName = null),
+              onTap: () => setState(() {
+                _logoFileName = null;
+                _logoDataUrl = null;
+              }),
               child: Padding(
                 padding: const EdgeInsets.all(6),
                 child: SvgPicture.asset(

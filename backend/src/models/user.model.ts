@@ -70,10 +70,18 @@ export interface ClientProfile {
   photo?: string;
 }
 
+/** An attorney listed by a law firm at registration (firm-verified). */
 export interface FirmLawyer {
   fullName: string;
   phone: string;
+  /** Work email, for the admin to reach the attorney directly. */
+  email?: string;
+  /** State bar number. */
   barLicense: string;
+  /** State whose bar issued the license, e.g. "New York". */
+  barState?: string;
+  /** Active · Inactive · Pending Admission · Suspended · Retired */
+  licenseStatus?: string;
   yearsExperience: string;
   designation: string;
   expertise: string[];
@@ -94,6 +102,12 @@ export interface LawFirmProfile {
   state: string;
   totalLawyers: string;
   lawyers: FirmLawyer[];
+  /**
+   * Firm's own voice-consultation fee (USD). When unset, the platform-wide
+   * law-firm rate from settings applies. Charged when a client books the
+   * firm or any of its attorneys.
+   */
+  consultationFee?: number;
   /** Firm logo/photo — S3 URL when S3_BUCKET is set, else a base64 data URL. */
   photo?: string;
 }
@@ -127,6 +141,9 @@ export interface User {
   suspensionReason?: string;
   /** Status to restore when the suspension is lifted. */
   statusBeforeSuspension?: UserStatus;
+  /** Attorney accounts linked to a law firm (phone matched the firm's team). */
+  firmId?: string;
+  firmName?: string;
   createdAt: string;
   onboardedAt?: string;
   reviewedAt?: string;

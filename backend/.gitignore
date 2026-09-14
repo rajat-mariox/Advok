@@ -1,4 +1,6 @@
 node_modules/
 dist/
-data/
+# Runtime data store stays local; the bundled public-domain dictionary ships with the code.
+data/*
+!data/legal_terms.json
 .env

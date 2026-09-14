@@ -1,19 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../AppNavigation/advocate_nav_screen.dart';
-import '../AppNavigation/client_nav_screen.dart';
-import '../AppNavigation/firm_nav_screen.dart';
-import '../AppNavigation/student_nav_screen.dart';
+import '../Routes/app_routes.dart';
 import '../Screens/AdvocateRegistration/advocate_registration_models.dart';
-import '../Screens/AdvocateRegistration/advocate_verification_submitted_screen.dart';
-import '../Screens/AdvocateRegistration/describe_yourself_screen.dart';
-import '../Screens/ChooseRoleScreen/choose_role_screen.dart';
-import '../Screens/LawFirmRegistration/firm_registration_submitted_screen.dart';
-import '../Screens/LawFirmRegistration/register_firm_screen.dart';
-import '../Screens/LawStudentRegistration/student_verification_screen.dart';
-import '../Screens/LawStudentRegistration/verification_submitted_screen.dart';
-import '../Screens/RegistrationStatus/account_suspended_screen.dart';
-import '../Screens/RegistrationStatus/registration_rejected_screen.dart';
 import 'api_service.dart';
 
 /// Decides where the user lands after OTP verification, based on the role and
@@ -27,49 +15,59 @@ class PostLoginNavigator {
 
     // First login — no role chosen yet.
     if (role == null || status == 'new') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ChooseRoleScreen()),
-      );
+      Navigator.of(context).pushNamed(AppRoutes.chooseRole);
       return;
     }
 
-    void goHome(Widget screen) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => screen),
-        (route) => false,
-      );
+    void goHome(String route, {Object? arguments}) {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(route, (r) => false, arguments: arguments);
     }
 
     // Suspension locks out every role, including clients.
     if (status == 'suspended') {
-      goHome(AccountSuspendedScreen(
-        role: role,
-        reason: Session.user?['suspensionReason'] as String?,
-      ));
+      goHome(
+        AppRoutes.accountSuspended,
+        arguments: StatusArgs(
+          role: role,
+          reason: Session.user?['suspensionReason'] as String?,
+        ),
+      );
       return;
     }
 
     if (role == 'client') {
-      goHome(const ClientNavScreen());
+      // A client who picked the role but never entered a name (e.g. closed
+      // the app on the name screen) is asked for it before going home.
+      final name = Session.profile?['fullName'] as String?;
+      goHome(
+        name == null || name.trim().isEmpty
+            ? AppRoutes.clientName
+            : AppRoutes.clientHome,
+      );
       return;
     }
 
     if (status == 'rejected') {
-      goHome(RegistrationRejectedScreen(
-        role: role,
-        reason: Session.user?['rejectionReason'] as String?,
-      ));
+      goHome(
+        AppRoutes.registrationRejected,
+        arguments: StatusArgs(
+          role: role,
+          reason: Session.user?['rejectionReason'] as String?,
+        ),
+      );
       return;
     }
 
     if (status == 'pending_approval') {
       switch (role) {
         case 'advocate':
-          goHome(const AdvocateVerificationSubmittedScreen());
+          goHome(AppRoutes.advocateSubmitted);
         case 'law_student':
-          goHome(const VerificationSubmittedScreen());
+          goHome(AppRoutes.studentSubmitted);
         default:
-          goHome(const FirmRegistrationSubmittedScreen());
+          goHome(AppRoutes.firmSubmitted);
       }
       return;
     }
@@ -77,11 +75,11 @@ class PostLoginNavigator {
     if (status == 'approved' || status == 'active') {
       switch (role) {
         case 'advocate':
-          goHome(const AdvocateNavScreen());
+          goHome(AppRoutes.advocateHome);
         case 'law_student':
-          goHome(const StudentNavScreen());
+          goHome(AppRoutes.studentHome);
         default:
-          goHome(const FirmNavScreen());
+          goHome(AppRoutes.firmHome);
       }
       return;
     }
@@ -93,28 +91,15 @@ class PostLoginNavigator {
 
   /// Opens the start of the registration flow for [role], clearing the stack.
   static void startOnboarding(BuildContext context, String role) {
+    final String route;
     if (role == 'advocate') {
       AdvocateOnboardingData.current.reset();
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: DescribeYourselfScreen.routeName),
-          builder: (_) => const DescribeYourselfScreen(),
-        ),
-        (route) => false,
-      );
+      route = AppRoutes.advocateRegistration;
     } else if (role == 'law_student') {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const StudentVerificationScreen()),
-        (route) => false,
-      );
+      route = AppRoutes.studentRegistration;
     } else {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          settings: const RouteSettings(name: RegisterFirmScreen.routeName),
-          builder: (_) => const RegisterFirmScreen(),
-        ),
-        (route) => false,
-      );
+      route = AppRoutes.firmRegistration;
     }
+    Navigator.of(context).pushNamedAndRemoveUntil(route, (r) => false);
   }
 }

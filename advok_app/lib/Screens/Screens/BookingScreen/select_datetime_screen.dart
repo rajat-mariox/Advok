@@ -49,11 +49,19 @@ class _DateOption {
     'December',
   ];
 
-  String get day => dayLabels[date.weekday - 1];
+  bool get isToday {
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+  }
+
+  String get day => isToday ? 'Today' : dayLabels[date.weekday - 1];
 
   String get dayNumber => '${date.day}';
 
-  String get fullLabel => '${_fullDayNames[date.weekday - 1]}, '
+  String get fullLabel =>
+      '${isToday ? 'Today, ' : ''}${_fullDayNames[date.weekday - 1]}, '
       '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
 }
 
@@ -72,36 +80,58 @@ class SelectDateTimeScreen extends StatefulWidget {
 }
 
 class _SelectDateTimeScreenState extends State<SelectDateTimeScreen> {
+  late final List<int> _slotTimes = _buildSlotTimes();
   late final List<_DateOption> _dates = _buildDates();
-  late final List<String> _slots = _buildSlots();
-  late int _selectedDate =
-      _dates.indexWhere((d) => d.available).clamp(0, 1 << 30);
+  late int _selectedDate = _firstBookableDate();
   int? _selectedSlot;
 
-  /// The next two weeks, marking the advocate's working days as bookable.
-  /// Empty when the advocate has no schedule, which shows the empty state.
+  /// Today plus the next two weeks, marking the advocate's working days as
+  /// bookable (today only while slots are still left in the day). Empty when
+  /// the advocate has no schedule, which shows the empty state.
   List<_DateOption> _buildDates() {
     final working = widget.advocate.workingDays.toSet();
     if (working.isEmpty) return const [];
-    final today = DateTime.now();
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
     return [
-      for (int i = 1; i <= 14; i++)
+      for (int i = 0; i <= 14; i++)
         _DateOption(
-          DateTime(today.year, today.month, today.day + i),
-          available: working
-              .contains(_DateOption.dayLabels[(today.weekday - 1 + i) % 7]),
+          DateTime(now.year, now.month, now.day + i),
+          available: working.contains(
+                  _DateOption.dayLabels[(now.weekday - 1 + i) % 7]) &&
+              (i > 0 || _slotTimes.any((m) => m > nowMinutes)),
         ),
     ];
   }
 
-  /// Hourly slots between the advocate's office hours ('HH:mm' 24h strings),
-  /// e.g. 09:00–18:00 becomes 9:00 AM … 5:00 PM.
-  List<String> _buildSlots() {
+  int _firstBookableDate() {
+    final index = _dates.indexWhere((d) => d.available);
+    return index < 0 ? 0 : index;
+  }
+
+  /// Hourly slot start times (minutes since midnight) between the advocate's
+  /// office hours ('HH:mm' 24h strings).
+  List<int> _buildSlotTimes() {
     final start = _parseMinutes(widget.advocate.startTime);
     final end = _parseMinutes(widget.advocate.endTime);
     if (start == null || end == null || start >= end) return const [];
     return [
-      for (int m = start; m + 60 <= end; m += 60) _formatSlot(m),
+      for (int m = start; m + 60 <= end; m += 60) m,
+    ];
+  }
+
+  /// Slots for the selected date. For today, slots that already started are
+  /// hidden so only live, still-bookable times show.
+  List<String> get _slots {
+    if (_dates.isEmpty || _selectedDate >= _dates.length) return const [];
+    if (!_dates[_selectedDate].isToday) {
+      return [for (final m in _slotTimes) _formatSlot(m)];
+    }
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
+    return [
+      for (final m in _slotTimes)
+        if (m > nowMinutes) _formatSlot(m),
     ];
   }
 

@@ -1,13 +1,26 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IconSearch } from '../components/Icon';
 import { Badge, FilterChips, PageHeader } from '../components/ui';
-import { cases } from '../utils/seed';
+import type { AdminCase } from '../types';
+import { fetchAdminCases, toAdminCase } from '../utils/backend';
+import { useRealtime } from '../utils/realtime';
 
 const FILTERS = ['All', 'Active', 'Hearing', 'Discovery', 'Closed'];
 
 export default function CasesPage() {
+  const [cases, setCases] = useState<AdminCase[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [filter, setFilter] = useState('All');
   const [query, setQuery] = useState('');
+
+  const [tick, setTick] = useState(0);
+  useRealtime(['cases'], () => setTick((t) => t + 1));
+
+  useEffect(() => {
+    fetchAdminCases()
+      .then((list) => setCases(list.map(toAdminCase)))
+      .catch(() => setLoadError('Could not load cases from the backend.'));
+  }, [tick]);
 
   const list = useMemo(() => {
     return cases.filter((c) => {
@@ -21,7 +34,7 @@ export default function CasesPage() {
         c.advocate.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
-  }, [filter, query]);
+  }, [cases, filter, query]);
 
   return (
     <div>
@@ -37,7 +50,7 @@ export default function CasesPage() {
           <IconSearch />
           <input
             className="input"
-            placeholder="Search case no, client, advocate..."
+            placeholder="Search case no, client, attorney..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ height: 40 }}
@@ -51,7 +64,7 @@ export default function CasesPage() {
             <tr>
               <th>Case</th>
               <th>Client</th>
-              <th>Advocate</th>
+              <th>Attorney</th>
               <th>Court</th>
               <th>Filed</th>
               <th>Next Hearing</th>
@@ -80,7 +93,7 @@ export default function CasesPage() {
             {list.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
-                  No cases match this filter.
+                  {loadError || 'No cases match this filter.'}
                 </td>
               </tr>
             )}

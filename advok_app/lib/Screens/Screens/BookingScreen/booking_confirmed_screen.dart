@@ -58,9 +58,10 @@ class BookingConfirmedScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     isPending
-                        ? 'Your office visit request has been sent to '
-                            '$advocateName. You will be notified once they '
-                            'accept it — check My Bookings for updates.'
+                        ? 'Your consultation request has been sent to '
+                            '$advocateName. Once they accept, their contact '
+                            'details are shared with you — check My Bookings '
+                            'for updates.'
                         : 'Your appointment with $advocateName has been '
                             'scheduled. A confirmation has been sent to your '
                             'email.',

@@ -4,11 +4,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:provider/provider.dart';
+
+import '../../../Routes/app_routes.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
-import '../../ChooseRoleScreen/choose_role_screen.dart';
-import '../../SelectCountryScreen/select_country_screen.dart';
 import '../../../CommonWidgets/profile_sheets.dart';
 import 'edit_profile_screen.dart';
 import 'help_support_screen.dart';
@@ -26,9 +28,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _location = '';
   final String _about = '';
 
+  /// Real counts from the backend: confirmed consultations and open cases.
+  int _consultations = 0;
+  int _activeCases = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final results = await Future.wait([
+        ApiService.fetchBookings(),
+        ApiService.fetchCases(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _consultations = results[0]
+            .where((b) =>
+                b['status'] == 'confirmed' || b['status'] == 'completed')
+            .length;
+        _activeCases =
+            results[1].where((c) => c['status'] != 'closed').length;
+      });
+    } catch (_) {
+      // Backend unreachable — counts stay at zero.
+    }
+  }
+
   /// Advocate profile photo from the session (base64 data URL → bytes).
   Uint8List? get _photoBytes {
-    final photo = Session.photo;
+    final photo = context.read<SessionProvider>().photo;
     if (photo == null || photo.isEmpty) return null;
     final comma = photo.indexOf(',');
     try {
@@ -39,9 +71,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openEditProfile() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const EditProfileScreen()));
     if (changed == true && mounted) setState(() {});
   }
 
@@ -76,16 +108,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildSectionLabel('My Information'),
               _buildSectionCard(
                 children: [
-                  const ProfileInfoRow(
+                  ProfileInfoRow(
                     icon: 'assets/icons/ic_award.svg',
                     label: 'Total Consultations',
-                    value: '0 sessions',
+                    value:
+                        '$_consultations session${_consultations == 1 ? '' : 's'}',
                   ),
                   _buildInsetDivider(),
-                  const ProfileInfoRow(
+                  ProfileInfoRow(
                     icon: 'assets/icons/ic_file.svg',
                     label: 'Active Cases',
-                    value: '0 ongoing',
+                    value: '$_activeCases ongoing',
                   ),
                   _buildInsetDivider(),
                   ProfileInfoRow(
@@ -101,7 +134,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_edit.svg',
                     title: 'Edit Profile',
-                    subtitle: Session.role == 'advocate'
+                    subtitle:
+                        context.watch<SessionProvider>().role == 'advocate'
                         ? 'Photo, name, email, practice area'
                         : 'Photo, name, email',
                     onTap: _openEditProfile,
@@ -233,10 +267,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     // Staying on the current role needs no further action.
     if (selectedRole == null || selectedRole == 0 || !mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const ChooseRoleScreen()),
-      (route) => false,
-    );
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openAboutSheet() {
@@ -279,51 +312,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
         slug: 'privacy-policy',
         fallback: ContentSheet(
           title: 'Privacy Policy',
-        sections: [
-          (
-            title: '1. Information We Collect',
-            body:
-                'We collect information you provide directly to us, such '
-                'as when you create an account, fill in a form, make a '
-                'booking, send us a message, or otherwise communicate '
-                'with us.',
-          ),
-          (
-            title: '2. How We Use Your Information',
-            body:
-                'We use the information we collect to operate and improve '
-                'our services, process bookings, send you technical notices '
-                'and support messages, respond to comments, and monitor '
-                'usage.',
-          ),
-          (
-            title: '3. Information Sharing',
-            body:
-                'We do not sell your personal data. We may share your '
-                'information with service providers who assist us in '
-                'operating the platform.',
-          ),
-          (
-            title: '4. Data Security',
-            body:
-                'We take reasonable measures to help protect information '
-                'about you from loss, theft, misuse, unauthorized access, '
-                'disclosure, alteration, and destruction.',
-          ),
-          (
-            title: '5. Your Rights',
-            body:
-                'You have the right to access, update, or delete your '
-                'personal information at any time from your profile '
-                'settings.',
-          ),
-          (
-            title: '6. Contact',
-            body:
-                'If you have any questions about this Privacy Policy, '
-                'please contact us at privacy@advok.app.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Information We Collect',
+              body:
+                  'We collect information you provide directly to us, such '
+                  'as when you create an account, fill in a form, make a '
+                  'booking, send us a message, or otherwise communicate '
+                  'with us.',
+            ),
+            (
+              title: '2. How We Use Your Information',
+              body:
+                  'We use the information we collect to operate and improve '
+                  'our services, process bookings, send you technical notices '
+                  'and support messages, respond to comments, and monitor '
+                  'usage.',
+            ),
+            (
+              title: '3. Information Sharing',
+              body:
+                  'We do not sell your personal data. We may share your '
+                  'information with service providers who assist us in '
+                  'operating the platform.',
+            ),
+            (
+              title: '4. Data Security',
+              body:
+                  'We take reasonable measures to help protect information '
+                  'about you from loss, theft, misuse, unauthorized access, '
+                  'disclosure, alteration, and destruction.',
+            ),
+            (
+              title: '5. Your Rights',
+              body:
+                  'You have the right to access, update, or delete your '
+                  'personal information at any time from your profile '
+                  'settings.',
+            ),
+            (
+              title: '6. Contact',
+              body:
+                  'If you have any questions about this Privacy Policy, '
+                  'please contact us at privacy@advok.app.',
+            ),
+          ],
           lastUpdated: 'Last updated: January 1, 2025',
         ),
       ),
@@ -340,52 +373,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
         slug: 'terms-and-conditions',
         fallback: ContentSheet(
           title: 'Terms & Conditions',
-        sections: [
-          (
-            title: '1. Acceptance of Terms',
-            body:
-                'By accessing or using ADVOK, you agree to be bound by '
-                'these Terms and our Privacy Policy.',
-          ),
-          (
-            title: '2. Use of Services',
-            body:
-                'ADVOK provides a platform connecting clients with legal '
-                'professionals. We are not a law firm and do not provide '
-                'legal advice.',
-          ),
-          (
-            title: '3. User Accounts',
-            body:
-                'You are responsible for maintaining the confidentiality '
-                'of your account credentials.',
-          ),
-          (
-            title: '4. Legal Professional Verification',
-            body:
-                'All legal professionals listed on ADVOK are independently '
-                'verified against Bar Council or state bar records.',
-          ),
-          (
-            title: '5. Payment & Refunds',
-            body:
-                'Consultation fees are charged at the rates listed by '
-                'each advocate. Refunds are available within 24 hours of '
-                'booking if cancelled before the consultation begins.',
-          ),
-          (
-            title: '6. Prohibited Conduct',
-            body:
-                'You may not use ADVOK for any unlawful purpose or to '
-                'harass advocates or other users.',
-          ),
-          (
-            title: '7. Governing Law',
-            body:
-                'These Terms shall be governed by the laws of the State '
-                'of New York.',
-          ),
-        ],
+          sections: [
+            (
+              title: '1. Acceptance of Terms',
+              body:
+                  'By accessing or using ADVOK, you agree to be bound by '
+                  'these Terms and our Privacy Policy.',
+            ),
+            (
+              title: '2. Use of Services',
+              body:
+                  'ADVOK provides a platform connecting clients with legal '
+                  'professionals. We are not a law firm and do not provide '
+                  'legal advice.',
+            ),
+            (
+              title: '3. User Accounts',
+              body:
+                  'You are responsible for maintaining the confidentiality '
+                  'of your account credentials.',
+            ),
+            (
+              title: '4. Legal Professional Verification',
+              body:
+                  'All legal professionals listed on ADVOK are independently '
+                  'verified against Bar Council or state bar records.',
+            ),
+            (
+              title: '5. Payment & Refunds',
+              body:
+                  'Consultation fees are charged at the rates listed by '
+                  'each advocate. Refunds are available within 24 hours of '
+                  'booking if cancelled before the consultation begins.',
+            ),
+            (
+              title: '6. Prohibited Conduct',
+              body:
+                  'You may not use ADVOK for any unlawful purpose or to '
+                  'harass advocates or other users.',
+            ),
+            (
+              title: '7. Governing Law',
+              body:
+                  'These Terms shall be governed by the laws of the State '
+                  'of New York.',
+            ),
+          ],
           lastUpdated: 'Effective: January 1, 2025',
         ),
       ),
@@ -401,11 +434,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => const LogoutSheet(),
     );
     if (confirmed == true && mounted) {
-      Session.clear();
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const SelectCountryScreen()),
-        (route) => false,
-      );
+      context.read<SessionProvider>().logout();
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.selectCountry, (route) => false);
     }
   }
 
@@ -443,9 +475,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             borderRadius: BorderRadius.circular(20),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () {
-                // TODO: Open the edit profile screen.
-              },
+              onTap: _openEditProfile,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 13,
@@ -483,6 +513,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileCard() {
+    final session = context.watch<SessionProvider>();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(21),
@@ -505,7 +536,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        Session.displayName,
+                        session.displayName,
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
@@ -516,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        Session.displayContact,
+                        session.displayContact,
                         style: const TextStyle(
                           fontSize: 12,
                           height: 16 / 12,
@@ -557,7 +588,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  Session.roleLabel,
+                                  session.roleLabel,
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
@@ -615,9 +646,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _buildStatCard('0', 'Consultations'),
+              _buildStatCard('$_consultations', 'Consultations'),
               const SizedBox(width: 8),
-              _buildStatCard('0', 'Active Cases'),
+              _buildStatCard('$_activeCases', 'Active Cases'),
               const SizedBox(width: 8),
               _buildStatCard('0', 'Saved'),
             ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../Utils/AppColors/app_colors.dart';
+import '../../Utils/CountryData/country_catalog.dart';
 import 'advocate_registration_models.dart';
 import 'advocate_step_scaffold.dart';
 import 'practice_location_screen.dart';
@@ -27,13 +28,13 @@ class _PurposeOption {
   final String label;
 }
 
-const List<_PurposeOption> _options = [
-  _PurposeOption(
+List<_PurposeOption> get _options => [
+  const _PurposeOption(
     purpose: AdvokPurpose.findClients,
     icon: 'assets/icons/ic_purpose_clients.svg',
     label: 'Find Clients',
   ),
-  _PurposeOption(
+  const _PurposeOption(
     purpose: AdvokPurpose.manageCases,
     icon: 'assets/icons/ic_purpose_cases.svg',
     label: 'Manage Cases',
@@ -41,19 +42,19 @@ const List<_PurposeOption> _options = [
   _PurposeOption(
     purpose: AdvokPurpose.scheduleHearings,
     icon: 'assets/icons/ic_purpose_hearings.svg',
-    label: 'Schedule Hearings',
+    label: 'Schedule ${CountryCatalog.terms.hearingsLabel}',
   ),
-  _PurposeOption(
+  const _PurposeOption(
     purpose: AdvokPurpose.onlineConsultation,
     icon: 'assets/icons/ic_purpose_consult.svg',
     label: 'Online Consultation',
   ),
-  _PurposeOption(
+  const _PurposeOption(
     purpose: AdvokPurpose.documentManagement,
     icon: 'assets/icons/ic_purpose_docs.svg',
     label: 'Document Management',
   ),
-  _PurposeOption(
+  const _PurposeOption(
     purpose: AdvokPurpose.everything,
     icon: 'assets/icons/ic_purpose_everything.svg',
     label: 'Everything',

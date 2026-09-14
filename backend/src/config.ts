@@ -35,6 +35,22 @@ export const S3_BUCKET = process.env.S3_BUCKET ?? '';
 // custom domain). Defaults to the bucket's own S3 URL.
 export const S3_PUBLIC_URL = (process.env.S3_PUBLIC_URL ?? '').replace(/\/+$/, '');
 
+// CourtListener (Free Law Project) — docket lookup on Add Case and the
+// court-records sync that keeps linked cases' status/timeline up to date.
+// The search API works without a token (lower rate limit); a free token from
+// courtlistener.com raises the limit. Optional.
+export const COURTLISTENER_API_TOKEN = (process.env.COURTLISTENER_API_TOKEN ?? '').trim();
+// How often (minutes) linked open cases are re-synced from court records.
+// Default 12h; 0 disables the scheduler (manual "Sync Now" still works).
+export const COURT_SYNC_INTERVAL_MINUTES = Number(
+  process.env.COURT_SYNC_INTERVAL_MINUTES ?? 720,
+);
+
+// ADVOK AI — Groq API key (console.groq.com) powering the in-app legal
+// assistant. Without it the app shows the "not connected" placeholder.
+export const GROQ_API_KEY = (process.env.GROQ_API_KEY ?? '').trim();
+export const GROQ_MODEL = process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b';
+
 // Seeded admin account (created on first run if missing).
 export const SEED_ADMIN_EMAIL = 'admin@advok.com';
 export const SEED_ADMIN_PASSWORD = 'Admin@123';

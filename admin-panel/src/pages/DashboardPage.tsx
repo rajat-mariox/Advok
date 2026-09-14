@@ -10,16 +10,28 @@ import {
   IconUsers,
 } from '../components/Icon';
 import { Avatar, Badge, PageHeader, StatCard } from '../components/ui';
-import { fetchBackendUsers, type BackendUser } from '../utils/backend';
+import {
+  bookingStatusLabel,
+  consultationTypeLabel,
+  fetchAdminBookings,
+  fetchAdminCases,
+  fetchBackendUsers,
+  formatDate,
+  type BackendBooking,
+  type BackendCase,
+  type BackendUser,
+} from '../utils/backend';
+import { money } from '../utils/seed';
+import { useRealtime } from '../utils/realtime';
 
 function queueEntry(u: BackendUser) {
   const p: any = u.profile ?? {};
   if (u.role === 'advocate') {
     return {
       key: u.id,
-      name: p.professional?.fullName ?? 'Advocate',
+      name: p.professional?.fullName ?? 'Attorney',
       sub: p.professional?.practiceArea ?? '—',
-      role: 'Advocate',
+      role: 'Attorney',
       to: '/advocates',
       badge: 'Pending Review',
     };
@@ -54,22 +66,47 @@ function EmptyNote({ text }: { text: string }) {
 
 export default function DashboardPage() {
   const [users, setUsers] = useState<BackendUser[]>([]);
+  const [bookings, setBookings] = useState<BackendBooking[]>([]);
+  const [cases, setCases] = useState<BackendCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
+  const [tick, setTick] = useState(0);
+  useRealtime(['users', 'bookings', 'cases', 'registrations'], () => setTick((t) => t + 1));
+
   useEffect(() => {
-    fetchBackendUsers()
-      .then(setUsers)
+    Promise.all([
+      fetchBackendUsers(),
+      fetchAdminBookings().catch(() => []),
+      fetchAdminCases().catch(() => []),
+    ])
+      .then(([userList, bookingList, caseList]) => {
+        setUsers(userList);
+        setBookings(bookingList);
+        setCases(caseList);
+      })
       .catch(() =>
         setLoadError('Could not reach the backend on port 4000 — stats show zero until it is running.'),
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [tick]);
 
   const count = (role: BackendUser['role']) => users.filter((u) => u.role === role).length;
   const pendingOf = (role: BackendUser['role']) =>
     users.filter((u) => u.role === role && u.status === 'pending_approval').length;
   const reviewQueue = users.filter((u) => u.status === 'pending_approval').map(queueEntry);
+
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const monthRevenue = bookings
+    .filter(
+      (b) =>
+        (b.status === 'confirmed' || b.status === 'completed') &&
+        b.date.startsWith(monthKey),
+    )
+    .reduce((sum, b) => sum + b.amount, 0);
+  const pendingBookings = bookings.filter((b) => b.status === 'pending').length;
+  const recentBookings = bookings.slice(0, 4);
+  const activeCases = cases.filter((c) => c.status !== 'closed').slice(0, 4);
 
   return (
     <div>
@@ -99,7 +136,7 @@ export default function DashboardPage() {
         <StatCard
           icon={<IconScale />}
           value={String(count('advocate'))}
-          label="Advocates"
+          label="Attorneys"
           trend={`${pendingOf('advocate')} awaiting review`}
         />
         <StatCard icon={<IconUsers />} value={String(count('client'))} label="Clients" trend="Registered via app" />
@@ -115,32 +152,54 @@ export default function DashboardPage() {
           label="Law Students"
           trend={`${pendingOf('law_student')} awaiting verification`}
         />
-        <StatCard icon={<IconCalendar />} value="0" label="Bookings" trend="Not live yet" />
-        <StatCard icon={<IconDollar />} value="$0" label="Revenue · This Month" trend="Not live yet" />
+        <StatCard
+          icon={<IconCalendar />}
+          value={String(bookings.length)}
+          label="Bookings"
+          trend={`${pendingBookings} awaiting response`}
+        />
+        <StatCard
+          icon={<IconDollar />}
+          value={money(monthRevenue)}
+          label="Revenue · This Month"
+          trend="Confirmed consultations"
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 22 }}>
-        {/* Revenue — no bookings/payments backend yet */}
         <div className="card" style={{ padding: 20 }}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
             <span className="section-title">Revenue Overview</span>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 16 }}>
-            $0
+            {money(monthRevenue)}
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-grey)' }}> /this month</span>
           </div>
-          <div
-            className="cell-sub"
-            style={{
-              height: 120,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              textAlign: 'center',
-            }}
-          >
-            Revenue data will appear here once bookings and payments go live.
-          </div>
+          {recentBookings.length === 0 ? (
+            <div
+              className="cell-sub"
+              style={{
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+              }}
+            >
+              Revenue appears here once consultations are booked.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recentBookings.map((b) => (
+                <div key={b.id} className="row" style={{ justifyContent: 'space-between', gap: 10 }}>
+                  <span className="cell-sub" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {b.clientName} → {b.advocateName} · {consultationTypeLabel(b.consultationType)}
+                  </span>
+                  <span className="cell-strong">{money(b.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Unified review queue: advocates + firms + students */}
@@ -180,7 +239,24 @@ export default function DashboardPage() {
               View All
             </Link>
           </div>
-          <EmptyNote text="No bookings yet — booking flow is not connected to the backend." />
+          {recentBookings.length === 0 ? (
+            <EmptyNote text={loading ? 'Loading…' : 'No bookings yet.'} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {recentBookings.map((b) => (
+                <div key={b.id} className="card-white row" style={{ padding: '10px 12px', gap: 11 }}>
+                  <Avatar name={b.clientName} size={36} square />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="cell-strong">{b.clientName}</div>
+                    <div className="cell-sub">
+                      {consultationTypeLabel(b.consultationType)} with {b.advocateName} · {formatDate(b.date)} {b.time}
+                    </div>
+                  </div>
+                  <Badge label={bookingStatusLabel(b.status)} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: 20 }}>
@@ -190,7 +266,24 @@ export default function DashboardPage() {
               View All
             </Link>
           </div>
-          <EmptyNote text="No cases yet — case tracking is not connected to the backend." />
+          {activeCases.length === 0 ? (
+            <EmptyNote text={loading ? 'Loading…' : 'No active cases yet.'} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {activeCases.map((c) => (
+                <div key={c.id} className="card-white row" style={{ padding: '10px 12px', gap: 11 }}>
+                  <Avatar name={c.title} size={36} square />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="cell-strong">{c.title}</div>
+                    <div className="cell-sub">
+                      {c.caseNumber.toUpperCase()} · {c.clientName} · {c.advocateName}
+                    </div>
+                  </div>
+                  <Badge label={c.status.charAt(0).toUpperCase() + c.status.slice(1)} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

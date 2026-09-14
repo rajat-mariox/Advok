@@ -19,10 +19,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Junior flow shows 5 text fields: full name, senior name, email,
-    // bar number, practice area.
+    // Junior flow shows 4 text fields: full name, senior name, email,
+    // bar number (practice area is a dropdown).
     final fields = find.byType(TextField);
-    expect(fields, findsNWidgets(5));
+    expect(fields, findsNWidgets(4));
 
     await tester.enterText(fields.at(0), 'Mithu');
     await tester.enterText(fields.at(1), 'Amit');

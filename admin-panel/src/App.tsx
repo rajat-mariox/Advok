@@ -16,6 +16,7 @@ import LoginPage from './pages/LoginPage';
 import MentorshipsPage from './pages/MentorshipsPage';
 import RevenuePage from './pages/RevenuePage';
 import SettingsPage from './pages/SettingsPage';
+import SupportPage from './pages/SupportPage';
 import { isAuthenticated } from './utils/auth';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/mentorships" element={<MentorshipsPage />} />
           <Route path="/legal-queries" element={<LegalQueriesPage />} />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="/revenue" element={<RevenuePage />} />
           <Route path="/content" element={<ContentPage />} />
           <Route path="/cms" element={<CmsPagesPage />} />

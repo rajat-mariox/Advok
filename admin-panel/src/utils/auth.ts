@@ -47,6 +47,8 @@ export async function login(email: string, password: string): Promise<string | n
 
 export function logout(): void {
   localStorage.removeItem(SESSION_KEY);
+  // Lazy import avoids a circular dependency (realtime.ts imports auth.ts).
+  void import('./realtime').then((m) => m.disconnectRealtime());
 }
 
 export function getSession(): Session | null {

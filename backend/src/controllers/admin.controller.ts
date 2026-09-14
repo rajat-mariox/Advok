@@ -1,8 +1,30 @@
 import type { Request, Response } from 'express';
-import type { Role, UserStatus } from '../models';
+import type { AdvocateProfile, ClientProfile, DbShape, Role, UserStatus, LawFirmProfile } from '../models';
+import { autoCompletePastBookings } from './booking.controller';
 import { getDb, saveDb } from '../services/db.service';
 import { publicUser } from '../util/user.util';
 import { isValidSections } from '../validators/cms.validator';
+import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
+
+/** Display names for both parties of a booking/case, for the admin tables. */
+function partyNames(db: DbShape, clientId: string, advocateId: string) {
+  const client = db.users.find((u) => u.id === clientId);
+  const advocate = db.users.find((u) => u.id === advocateId);
+  const cp = client?.profile as ClientProfile | undefined;
+  const clientName = cp?.fullName?.trim();
+  // The provider can be an advocate (name under `professional`) or a law
+  // firm (name under `firmName`); guard both so one odd record can't 500 the list.
+  let advocateName: string | undefined;
+  if (advocate?.role === 'law_firm') {
+    advocateName = (advocate.profile as LawFirmProfile | undefined)?.firmName?.trim();
+  } else {
+    advocateName = (advocate?.profile as AdvocateProfile | undefined)?.professional?.fullName?.trim();
+  }
+  return {
+    clientName: clientName && clientName.length > 0 ? clientName : (client?.phone ?? 'Client'),
+    advocateName: advocateName && advocateName.length > 0 ? advocateName : 'Attorney',
+  };
+}
 
 const REVIEWABLE_ROLES: Role[] = ['advocate', 'law_student', 'law_firm'];
 
@@ -37,6 +59,9 @@ export function deleteUser(req: Request, res: Response) {
   if (index === -1) return res.status(404).json({ error: 'User not found' });
   db.users.splice(index, 1);
   saveDb();
+  publishToUser(req.params.id, 'account', { status: 'deleted' });
+  publishToAdmins('users', { userId: req.params.id });
+  publishToAdmins('registrations');
   return res.json({ ok: true });
 }
 
@@ -53,6 +78,8 @@ export function suspendUser(req: Request, res: Response) {
       ? req.body.reason.trim()
       : undefined;
   saveDb();
+  publishToUser(user.id, 'account', { status: user.status });
+  publishToAdmins('users', { userId: user.id });
   return res.json({ user: publicUser(user) });
 }
 
@@ -67,6 +94,8 @@ export function unsuspendUser(req: Request, res: Response) {
   user.statusBeforeSuspension = undefined;
   user.suspensionReason = undefined;
   saveDb();
+  publishToUser(user.id, 'account', { status: user.status });
+  publishToAdmins('users', { userId: user.id });
   return res.json({ user: publicUser(user) });
 }
 
@@ -90,6 +119,9 @@ function review(id: string, status: UserStatus, reason?: string) {
   user.rejectionReason = status === 'rejected' ? (reason ?? 'Not specified') : undefined;
   user.reviewedAt = new Date().toISOString();
   saveDb();
+  publishToUser(user.id, 'account', { status: user.status });
+  publishToAdmins('registrations', { userId: user.id });
+  publishToAdmins('users', { userId: user.id });
   return user;
 }
 
@@ -114,6 +146,79 @@ export function reopenRegistration(req: Request, res: Response) {
 }
 
 /** CMS pages (Terms, Privacy, ...) with full content, for the editor. */
+/** Every consultation booked on the platform, newest first. */
+export function listBookings(_req: Request, res: Response) {
+  const db = getDb();
+  if (autoCompletePastBookings(db)) saveDb();
+  const list = [...(db.bookings ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  return res.json({
+    bookings: list.map((b) => ({
+      ...b,
+      ...partyNames(db, b.clientId, b.advocateId),
+    })),
+  });
+}
+
+/** Every case being managed on the platform, most recently updated first. */
+export function listCases(_req: Request, res: Response) {
+  const db = getDb();
+  const list = [...(db.cases ?? [])].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+  return res.json({
+    cases: list.map((c) => ({
+      ...c,
+      ...partyNames(db, c.clientId, c.advocateId),
+    })),
+  });
+}
+
+/**
+ * Removes one case along with the notifications and chat cards that point
+ * at it. For cleaning up test or mistaken entries; users are untouched.
+ */
+export function deleteCase(req: Request, res: Response) {
+  const db = getDb();
+  const index = (db.cases ?? []).findIndex((c) => c.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Case not found' });
+  const caseId = req.params.id;
+  const removedCase = db.cases![index];
+  db.cases!.splice(index, 1);
+  db.notifications = (db.notifications ?? []).filter((n) => n.caseId !== caseId);
+  db.messages = (db.messages ?? []).filter((m) => m.meta?.caseId !== caseId);
+  saveDb();
+  publishToUsers([removedCase.clientId, removedCase.advocateId], 'cases', { caseId });
+  publishToUsers([removedCase.clientId, removedCase.advocateId], 'notifications');
+  publishToAdmins('cases', { caseId });
+  return res.json({ ok: true });
+}
+
+/**
+ * Clears every booking, case, client relationship, chat message and
+ * notification — an admin reset for wiping test data. User accounts are
+ * untouched.
+ */
+export function clearOperations(_req: Request, res: Response) {
+  const db = getDb();
+  const removed = {
+    bookings: db.bookings?.length ?? 0,
+    cases: db.cases?.length ?? 0,
+    relationships: db.relationships?.length ?? 0,
+    messages: db.messages?.length ?? 0,
+    notifications: db.notifications?.length ?? 0,
+  };
+  db.bookings = [];
+  db.cases = [];
+  db.relationships = [];
+  db.messages = [];
+  db.notifications = [];
+  saveDb();
+  for (const topic of ['bookings', 'cases', 'clients', 'messages', 'notifications'] as const) publishToAll(topic);
+  return res.json({ ok: true, removed });
+}
+
 export function listCmsPages(_req: Request, res: Response) {
   return res.json({ pages: getDb().cmsPages ?? [] });
 }
@@ -141,4 +246,30 @@ export function updateCmsPage(req: Request, res: Response) {
   page.updatedAt = new Date().toISOString();
   saveDb();
   return res.json({ page });
+}
+
+/**
+ * PATCH /admin/users/:id/firm-fee — body: { consultationFee: number | null }.
+ * Sets (or clears) a law firm's own voice-consultation fee. Null falls back
+ * to the platform-wide law-firm rate.
+ */
+export function setFirmFee(req: Request, res: Response) {
+  const db = getDb();
+  const user = db.users.find((u) => u.id === req.params.id && u.role === 'law_firm');
+  if (!user || !user.profile) return res.status(404).json({ error: 'Law firm not found' });
+  const raw = (req.body ?? {}).consultationFee;
+  const profile = user.profile as LawFirmProfile;
+  if (raw === null || raw === undefined || raw === '') {
+    delete profile.consultationFee;
+  } else {
+    const fee = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(fee) || fee < 0 || fee > 100000) {
+      return res.status(400).json({ error: 'consultationFee must be between 0 and 100000' });
+    }
+    profile.consultationFee = Math.round(fee * 100) / 100;
+  }
+  saveDb();
+  publishToUser(user.id, 'account', { status: user.status });
+  publishToAdmins('users', { userId: user.id });
+  return res.json({ user: publicUser(user) });
 }

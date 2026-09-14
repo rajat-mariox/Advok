@@ -48,7 +48,7 @@ class _StudentNavScreenState extends State<StudentNavScreen> {
             children: [
               StudentHomeScreen(onProfileTap: () => setState(() => _index = 4)),
               FindMentorsScreen(onBack: () => setState(() => _index = 0)),
-              const MessagesScreen(),
+              MessagesScreen(onBack: () => setState(() => _index = 0)),
               const LegalQueriesScreen(),
               const StudentProfileScreen(),
             ],

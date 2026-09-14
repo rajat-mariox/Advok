@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 
+import '../../Routes/app_routes.dart';
 import '../../Utils/AppColors/app_colors.dart';
-import '../LoginScreen/login_screen.dart';
 
 class Country {
-  const Country({required this.flag, required this.name, required this.dialCode});
+  const Country({
+    required this.flag,
+    required this.name,
+    required this.dialCode,
+  });
 
   final String flag;
   final String name;
@@ -50,8 +54,11 @@ class _SelectCountryScreenState extends State<SelectCountryScreen> {
     if (_query.isEmpty) return countries;
     final query = _query.toLowerCase();
     return countries
-        .where((c) =>
-            c.name.toLowerCase().contains(query) || c.dialCode.contains(query))
+        .where(
+          (c) =>
+              c.name.toLowerCase().contains(query) ||
+              c.dialCode.contains(query),
+        )
         .toList();
   }
 
@@ -301,12 +308,9 @@ class _SelectCountryScreenState extends State<SelectCountryScreen> {
                     borderRadius: BorderRadius.circular(14),
                     onTap: enabled
                         ? () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    LoginScreen(country: _selected!),
-                              ),
-                            );
+                            Navigator.of(
+                              context,
+                            ).pushNamed(AppRoutes.login, arguments: _selected!);
                           }
                         : null,
                     child: Row(
@@ -416,8 +420,7 @@ class _CountryTile extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   height: 1.43,
                   letterSpacing: -0.15,
-                  color:
-                      selected ? AppColors.textPrimary : AppColors.textGrey,
+                  color: selected ? AppColors.textPrimary : AppColors.textGrey,
                 ),
               ),
               if (selected) ...[

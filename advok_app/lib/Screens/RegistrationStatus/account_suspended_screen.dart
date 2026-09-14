@@ -2,20 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../Routes/app_routes.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
-import '../SplashScreen/splash_screen.dart';
 
 /// Shown after login when the admin has suspended this account (any role).
 /// The user is locked out until the suspension is lifted from the admin panel.
 class AccountSuspendedScreen extends StatelessWidget {
-  const AccountSuspendedScreen({
-    super.key,
-    required this.role,
-    this.reason,
-  });
+  const AccountSuspendedScreen({super.key, required this.role, this.reason});
 
   /// Backend role: client, advocate, law_student or law_firm.
   final String role;
@@ -268,10 +264,9 @@ class AccountSuspendedScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             onTap: () {
               Session.clear();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const SplashScreen()),
-                (route) => false,
-              );
+              Navigator.of(
+                context,
+              ).pushNamedAndRemoveUntil(AppRoutes.splash, (route) => false);
             },
             child: const Center(
               child: Text(

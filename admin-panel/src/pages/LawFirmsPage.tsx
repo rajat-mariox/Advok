@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconFile, IconSearch, IconX } from '../components/Icon';
 import {
-  AccountActions,
   Avatar,
   Badge,
+  ChipList,
+  DetailGrid,
+  DetailSection,
   Drawer,
+  DrawerHero,
   FilterChips,
-  InfoRow,
+  ListEmpty,
   PageHeader,
+  RowActions,
 } from '../components/ui';
 import type { AdminLawFirm, FirmVerificationStatus } from '../types';
 import {
   deleteBackendUser,
+  setFirmFee,
   fetchBackendUsers,
   hasSubmittedProfile,
   reviewRegistration,
@@ -20,6 +25,7 @@ import {
   unsuspendBackendUser,
 } from '../utils/backend';
 import { money } from '../utils/seed';
+import { useRealtime } from '../utils/realtime';
 
 const FILTERS = ['All', 'Pending Approval', 'Verified', 'Rejected', 'Suspended'];
 
@@ -41,6 +47,9 @@ export default function LawFirmsPage() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, []);
+  useRealtime(['users'], () => {
+    void load();
+  });
 
   const list = useMemo(() => {
     return firms.filter((f) => {
@@ -57,6 +66,55 @@ export default function LawFirmsPage() {
   }, [firms, filter, query]);
 
   const selected = firms.find((f) => f.id === selectedId) ?? null;
+
+  // Firm's own consultation fee, edited in the drawer.
+
+  const [feeDraft, setFeeDraft] = useState('');
+
+  const [feeNote, setFeeNote] = useState('');
+
+  useEffect(() => {
+
+    setFeeDraft(selected?.consultationFee != null ? String(selected.consultationFee) : '');
+
+    setFeeNote('');
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  }, [selectedId]);
+
+
+  const saveFee = async () => {
+
+    if (!selected) return;
+
+    const raw = feeDraft.trim();
+
+    const fee = raw === '' ? null : Number(raw);
+
+    if (fee !== null && (!Number.isFinite(fee) || fee < 0)) {
+
+      setFeeNote('Enter a valid amount, or leave empty for the platform rate.');
+
+      return;
+
+    }
+
+    const ok = await setFirmFee(selected.id, fee);
+
+    if (ok) {
+
+      setFirms((prev) => prev.map((f) => (f.id === selected.id ? { ...f, consultationFee: fee ?? undefined } : f)));
+
+      setFeeNote(fee === null ? 'Cleared — platform law-firm rate applies.' : `Saved — clients see $${fee} for this firm and its attorneys.`);
+
+    } else {
+
+      setFeeNote('Could not save the fee.');
+
+    }
+
+  };
 
   const setVerification = async (id: string, verification: FirmVerificationStatus) => {
     const ok = await reviewRegistration(id, verification);
@@ -119,11 +177,12 @@ export default function LawFirmsPage() {
               <th>Phone</th>
               <th>Location</th>
               <th>Founded</th>
-              <th>Lawyers</th>
+              <th>Attorneys</th>
               <th>Active Cases</th>
               <th>Clients</th>
               <th>Revenue (Mo.)</th>
               <th>Approval</th>
+              <th style={{ textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -153,11 +212,20 @@ export default function LawFirmsPage() {
                 <td>
                   <Badge label={f.verification} />
                 </td>
+                <td style={{ textAlign: 'center' }}>
+                  <RowActions
+                    suspended={f.verification === 'Suspended'}
+                    onView={() => setSelectedId(f.id)}
+                    onSuspend={() => suspendUser(f.id)}
+                    onUnsuspend={() => unsuspendUser(f.id)}
+                    onDelete={() => deleteUser(f.id)}
+                  />
+                </td>
               </tr>
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
+                <td colSpan={10} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
                   {loading ? 'Loading firms…' : loadError || 'No firms match this filter.'}
                 </td>
               </tr>
@@ -168,129 +236,178 @@ export default function LawFirmsPage() {
 
       {selected && (
         <Drawer
+          wide
           title="Firm Details"
           onClose={() => setSelectedId(null)}
           footer={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {selected.verification === 'Pending Approval' ? (
-                <div className="row" style={{ gap: 10 }}>
-                  <button
-                    className="btn-primary"
-                    style={{ flex: 1 }}
-                    onClick={() => setVerification(selected.id, 'Verified')}
-                  >
-                    <IconCheck /> Approve Firm
-                  </button>
-                  <button
-                    className="btn-danger"
-                    style={{ flex: 1, height: 44, borderRadius: 14 }}
-                    onClick={() => setVerification(selected.id, 'Rejected')}
-                  >
-                    <IconX /> Reject
-                  </button>
-                </div>
-              ) : selected.verification !== 'Suspended' ? (
+            selected.verification === 'Pending Approval' ? (
+              <div className="row" style={{ gap: 10 }}>
                 <button
-                  className="btn-secondary"
-                  style={{ width: '100%' }}
-                  onClick={() => setVerification(selected.id, 'Pending Approval')}
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={() => setVerification(selected.id, 'Verified')}
                 >
-                  Move Back to Review
+                  <IconCheck /> Approve Firm
                 </button>
-              ) : null}
-              <AccountActions
-                suspended={selected.verification === 'Suspended'}
-                onSuspend={() => suspendUser(selected.id)}
-                onUnsuspend={() => unsuspendUser(selected.id)}
-                onDelete={() => deleteUser(selected.id)}
-              />
-            </div>
+                <button
+                  className="btn-danger"
+                  style={{ flex: 1, height: 44, borderRadius: 14, fontSize: 13.5, gap: 8 }}
+                  onClick={() => setVerification(selected.id, 'Rejected')}
+                >
+                  <IconX /> Reject
+                </button>
+              </div>
+            ) : selected.verification !== 'Suspended' ? (
+              <button
+                className="btn-secondary"
+                style={{ width: '100%' }}
+                onClick={() => setVerification(selected.id, 'Pending Approval')}
+              >
+                Move Back to Review
+              </button>
+            ) : undefined
           }
         >
-          <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.firmName} photo={selected.photo} size={56} square />
-            <div>
-              <div className="row" style={{ gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.firmName}</span>
-                <Badge label={selected.verification} />
-              </div>
-              <div className="cell-sub" style={{ fontSize: 12.5 }}>
-                Law Firm · Founded {selected.foundedYear} · Submitted {selected.submitted}
-              </div>
-            </div>
-          </div>
+          <DrawerHero
+            name={selected.firmName}
+            photo={selected.photo}
+            square
+            badge={selected.verification}
+            subtitle={`${selected.contactPersonName} · Managing Partner · ${selected.city}, ${selected.state}`}
+          />
 
           {selected.verification === 'Pending Approval' && (
-            <div
-              className="card-white"
-              style={{ padding: '10px 14px', marginBottom: 16, fontSize: 12, color: 'var(--text-grey-555)', lineHeight: 1.5 }}
-            >
-              While pending, the firm can use Basic Dashboard, Lawyer Management and Case Tracking.
-              Approval unlocks Client Requests, Premium Features and the Verified Badge.
+            <div className="note-box">
+              <span className="k">While pending</span>
+              The firm can use the basic dashboard, lawyer management and case tracking. Approval
+              unlocks client requests, premium features and the Verified badge. Check each listed
+              attorney's bar license against the state bar before approving.
             </div>
           )}
 
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Firm Profile</div>
-          <InfoRow k="Managing Partner" v={selected.contactPersonName} />
-          <InfoRow k="Founded Year" v={selected.foundedYear} />
-          <InfoRow
-            k="Firm Logo"
-            v={
-              selected.logoFileName ? (
-                <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                  <IconFile size={14} /> {selected.logoFileName}
-                </span>
-              ) : (
-                'Not uploaded'
-              )
-            }
-          />
+          <DetailSection title="Firm Profile" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Managing Partner', v: selected.contactPersonName },
+                { k: 'Founded', v: selected.foundedYear },
+                { k: 'Attorneys at Firm', v: selected.totalLawyers },
+                {
+                  k: 'Firm Logo',
+                  v: selected.logoFileName ? (
+                    <span className="row" style={{ gap: 6 }}>
+                      <IconFile size={14} /> {selected.logoFileName}
+                    </span>
+                  ) : (
+                    'Not uploaded'
+                  ),
+                },
+                { k: 'Submitted', v: selected.submitted },
+              ]}
+            />
+          </DetailSection>
 
-          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Contact Information</div>
-          <InfoRow k="Login Phone" v={selected.phone} />
-          <InfoRow k="Official Email" v={selected.officialEmail} />
-          <InfoRow k="Main Phone" v={selected.mainPhone} />
-          <InfoRow k="Reception Number" v={selected.receptionNumber ?? '—'} />
-
-          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Office Address</div>
-          <InfoRow k="Address" v={`${selected.addressLine1}${selected.addressLine2 ? ', ' + selected.addressLine2 : ''}`} />
-          <InfoRow k="City" v={selected.city} />
-          <InfoRow k="State · ZIP" v={`${selected.state} · ${selected.zipCode}`} />
-
-          <div className="eyebrow" style={{ margin: '18px 0 8px' }}>
-            Legal Team · {selected.totalLawyers} lawyers at firm
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {selected.team.map((l) => (
-              <div key={l.fullName} className="card-white" style={{ padding: '10px 12px' }}>
-                <div className="row" style={{ gap: 10 }}>
-                  <Avatar name={l.fullName} size={32} square />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cell-strong">{l.fullName}</div>
-                    <div className="cell-sub">
-                      {l.designation}
-                      {l.yearsExperience ? ` · ${l.yearsExperience} yrs` : ''}
-                      {l.barLicense ? ` · ${l.barLicense}` : ''}
-                    </div>
-                  </div>
-                </div>
-                {l.expertise.length > 0 && (
-                  <div className="row" style={{ gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
-                    {l.expertise.map((e) => (
-                      <span key={e} className="chip" style={{ height: 22, padding: '0 9px', fontSize: 10.5 }}>
-                        {e}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          <DetailSection title="Consultation Fee">
+            <div style={{ padding: '8px 0', display: 'grid', gap: 8 }}>
+              <div className="cell-sub" style={{ marginTop: 0 }}>
+                Charged when a client books this firm or any of its attorneys. Leave empty to use the
+                platform law-firm rate from Settings.
               </div>
-            ))}
-          </div>
+              <div className="row" style={{ gap: 8 }}>
+                <span style={{ fontWeight: 800, fontSize: 15 }}>$</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  placeholder="Platform rate"
+                  value={feeDraft}
+                  onChange={(e) => setFeeDraft(e.target.value)}
+                  style={{ width: 140, height: 38, fontWeight: 700 }}
+                />
+                <span className="cell-sub" style={{ marginTop: 0 }}>/ voice consultation</span>
+                <button className="btn-primary" style={{ height: 38, marginLeft: 'auto' }} onClick={saveFee}>
+                  Save Fee
+                </button>
+              </div>
+              {feeNote && <div className="cell-sub" style={{ marginTop: 0, fontWeight: 600 }}>{feeNote}</div>}
+            </div>
+          </DetailSection>
 
-          <div className="eyebrow" style={{ margin: '18px 0 4px' }}>Activity</div>
-          <InfoRow k="Active Cases" v={selected.activeCases} />
-          <InfoRow k="Clients" v={selected.clients} />
-          <InfoRow k="Revenue · This Month" v={selected.revenueMonth > 0 ? money(selected.revenueMonth) : '—'} />
+          <DetailSection title="Contact" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Login Phone', v: selected.phone },
+                { k: 'Official Email', v: selected.officialEmail },
+                { k: 'Main Phone', v: selected.mainPhone },
+                { k: 'Reception', v: selected.receptionNumber ?? '—' },
+              ]}
+            />
+          </DetailSection>
+
+          <DetailSection title="Office Address" flush>
+            <DetailGrid
+              cells={[
+                { k: 'City', v: selected.city },
+                { k: 'State · ZIP', v: `${selected.state} · ${selected.zipCode}` },
+              ]}
+            />
+            <div style={{ padding: '0 14px 12px' }}>
+              <div className="detail-cell">
+                <span className="k">Street Address</span>
+                <span className="v">
+                  {selected.addressLine1}
+                  {selected.addressLine2 ? `, ${selected.addressLine2}` : ''}
+                </span>
+              </div>
+            </div>
+          </DetailSection>
+
+          <DetailSection
+            title="Legal Team"
+            aside={<span className="cell-sub" style={{ marginTop: 0 }}>{selected.team.length} listed</span>}
+            flush
+          >
+            {selected.team.length === 0 ? (
+              <ListEmpty text="No attorneys added." />
+            ) : (
+              selected.team.map((l, i) => (
+                <div key={i} className="list-item" style={{ alignItems: 'stretch', flexDirection: 'column', gap: 8 }}>
+                  <div className="row" style={{ justifyContent: 'space-between', gap: 10 }}>
+                    <div className="row" style={{ gap: 10, minWidth: 0 }}>
+                      <Avatar name={l.fullName} size={32} square />
+                      <div className="list-item-main">
+                        <div className="list-item-title">{l.fullName}</div>
+                        <div className="list-item-sub">
+                          {[l.designation, l.yearsExperience ? `${l.yearsExperience} yrs experience` : '']
+                            .filter(Boolean)
+                            .join(' · ') || '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge label={l.licenseStatus || 'Active'} />
+                  </div>
+                  <DetailGrid
+                    cells={[
+                      { k: 'State Bar', v: [l.barState, l.barLicense ? `#${l.barLicense}` : ''].filter(Boolean).join(' ') || '—' },
+                      { k: 'License Status', v: l.licenseStatus || 'Active' },
+                      { k: 'Email', v: l.email || '—' },
+                      { k: 'Phone', v: l.phone || '—' },
+                    ]}
+                  />
+                  {l.expertise.length > 0 && <ChipList items={l.expertise} />}
+                </div>
+              ))
+            )}
+          </DetailSection>
+
+          <DetailSection title="Activity" flush>
+            <DetailGrid
+              cells={[
+                { k: 'Active Cases', v: selected.activeCases },
+                { k: 'Clients', v: selected.clients },
+                { k: 'Revenue · This Month', v: selected.revenueMonth > 0 ? money(selected.revenueMonth) : '—' },
+              ]}
+            />
+          </DetailSection>
         </Drawer>
       )}
     </div>

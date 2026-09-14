@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../AppNavigation/student_nav_screen.dart';
+import '../../Routes/app_routes.dart';
 import '../../Services/approval_status_poller.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
-import '../RegistrationStatus/registration_rejected_screen.dart';
 
 /// Shown after the student verification form is submitted. Polls the backend
 /// and keeps the dashboard locked until the admin verifies the ID; a
@@ -43,14 +42,10 @@ class _VerificationSubmittedScreenState
   void _onStatusChanged(String status, String? rejectionReason) {
     if (!mounted) return;
     if (status == 'rejected') {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => RegistrationRejectedScreen(
-            role: 'law_student',
-            reason: rejectionReason,
-          ),
-        ),
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.registrationRejected,
         (route) => false,
+        arguments: StatusArgs(role: 'law_student', reason: rejectionReason),
       );
       return;
     }
@@ -147,9 +142,9 @@ class _VerificationSubmittedScreenState
           child: Text(
             _approved
                 ? 'Your college ID has been verified. All student resources '
-                    'and learning tools are now unlocked.'
+                      'and learning tools are now unlocked.'
                 : "Your profile has been sent for verification. Once approved, "
-                    "you'll gain access to student resources and exclusive learning tools.",
+                      "you'll gain access to student resources and exclusive learning tools.",
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 14,
@@ -270,10 +265,8 @@ class _VerificationSubmittedScreenState
               borderRadius: BorderRadius.circular(14),
               onTap: _approved
                   ? () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const StudentNavScreen(),
-                        ),
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        AppRoutes.studentHome,
                         (route) => false,
                       );
                     }
@@ -396,8 +389,7 @@ class _TimelineStep extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   height: 20 / 14,
                   letterSpacing: -0.15,
-                  color:
-                      upcoming ? AppColors.textGrey : AppColors.textPrimary,
+                  color: upcoming ? AppColors.textGrey : AppColors.textPrimary,
                 ),
               ),
             ),

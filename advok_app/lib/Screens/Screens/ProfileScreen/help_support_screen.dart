@@ -1,12 +1,128 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../CommonWidgets/profile_sheets.dart';
+import '../../../Services/api_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
-import '../MessagesScreen/chat_screen.dart';
+import 'support_tickets_screen.dart';
 
-class HelpSupportScreen extends StatelessWidget {
+/// Help & Support hub for every role. Contact details come from the admin
+/// panel (Settings → Help & Support Contact); the FAQ is the admin-editable
+/// `help-center` CMS page; Contact Support raises a ticket the admin answers
+/// from the Support page.
+class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({super.key});
+
+  @override
+  State<HelpSupportScreen> createState() => _HelpSupportScreenState();
+}
+
+class _HelpSupportScreenState extends State<HelpSupportScreen> {
+  // Defaults mirror the backend seed so the screen is usable offline.
+  String _email = 'support@advok.app';
+  String _phone = '+1 800 238 6543';
+  String _hours = 'Available Mon–Sat · 9AM–8PM EST';
+  String _responseNote = 'Response within 2 hours';
+  int _unreadReplies = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final contact = await ApiService.fetchSupportContact();
+      final tickets = await ApiService.fetchSupportTickets();
+      if (!mounted) return;
+      setState(() {
+        _email = (contact['email'] as String?)?.trim().isNotEmpty == true
+            ? (contact['email'] as String).trim()
+            : _email;
+        _phone = (contact['phone'] as String?)?.trim().isNotEmpty == true
+            ? (contact['phone'] as String).trim()
+            : _phone;
+        _hours = (contact['hours'] as String?)?.trim().isNotEmpty == true
+            ? (contact['hours'] as String).trim()
+            : _hours;
+        _responseNote =
+            (contact['responseNote'] as String?)?.trim().isNotEmpty == true
+                ? (contact['responseNote'] as String).trim()
+                : _responseNote;
+        _unreadReplies = tickets.unread;
+      });
+    } on ApiException {
+      // Keep the defaults; the ticket screen surfaces connection errors.
+    }
+  }
+
+  Future<void> _launch(Uri uri, String failure) async {
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure)));
+    }
+  }
+
+  Future<void> _emailSupport() => _launch(
+        Uri(
+          scheme: 'mailto',
+          path: _email,
+          queryParameters: {'subject': 'ADVOK support request'},
+        ),
+        'No email app found. Write to $_email.',
+      );
+
+  Future<void> _callSupport() => _launch(
+        Uri(scheme: 'tel', path: _phone.replaceAll(RegExp(r'[^0-9+]'), '')),
+        'Calling is not available on this device. Dial $_phone.',
+      );
+
+  Future<void> _openTickets() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SupportTicketsScreen()),
+    );
+    await _load();
+  }
+
+  Future<void> _openFaq() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: AppColors.black.withValues(alpha: 0.45),
+      backgroundColor: Colors.transparent,
+      builder: (context) => const CmsContentSheet(
+        slug: 'help-center',
+        fallback: ContentSheet(
+          title: 'FAQ & Help Center',
+          sections: [
+            (
+              title: 'How do I book a consultation?',
+              body:
+                  'Open an attorney\'s profile and tap Book Appointment. '
+                  'Choose the consultation type, date and time, then '
+                  'confirm. You are notified once the attorney responds.',
+            ),
+            (
+              title: 'Why is my account still pending?',
+              body:
+                  'Attorney, law student and law firm accounts are reviewed '
+                  'by our team. This usually takes 1–2 business days.',
+            ),
+            (
+              title: 'Still need help?',
+              body:
+                  'Use Contact Support on the Help & Support screen to raise '
+                  'a ticket. Our team replies inside the app.',
+            ),
+          ],
+          lastUpdated: 'Last updated: August 25, 2026',
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,44 +145,36 @@ class HelpSupportScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     _HelpOption(
                       icon: 'assets/icons/ic_chat_bubble.svg',
-                      title: 'Chat with Support',
-                      subtitle: 'Response within 2 hours',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ChatScreen(
-                            name: 'ADVOK Support',
-                            online: true,
-                          ),
-                        ),
-                      ),
+                      title: 'Contact Support',
+                      subtitle: _unreadReplies > 0
+                          ? '$_unreadReplies new '
+                              '${_unreadReplies == 1 ? 'reply' : 'replies'} '
+                              'from support'
+                          : _responseNote,
+                      badge: _unreadReplies,
+                      onTap: _openTickets,
                     ),
                     const SizedBox(height: 8),
                     _HelpOption(
                       icon: 'assets/icons/ic_mail.svg',
                       title: 'Email Us',
-                      subtitle: 'support@advok.app',
-                      onTap: () {
-                        // TODO: Open the email client.
-                      },
+                      subtitle: _email,
+                      onTap: _emailSupport,
                     ),
                     const SizedBox(height: 8),
                     _HelpOption(
                       icon: 'assets/icons/ic_phone.svg',
                       iconColor: AppColors.textPrimary,
                       title: 'Call Support',
-                      subtitle: '+1 800 ADVOK HELP',
-                      onTap: () {
-                        // TODO: Start a phone call.
-                      },
+                      subtitle: _phone,
+                      onTap: _callSupport,
                     ),
                     const SizedBox(height: 8),
                     _HelpOption(
                       icon: 'assets/icons/ic_book_open.svg',
                       title: 'FAQ & Help Center',
                       subtitle: 'Browse common questions',
-                      onTap: () {
-                        // TODO: Open the FAQ & help center.
-                      },
+                      onTap: _openFaq,
                     ),
                     const SizedBox(height: 8),
                     _HelpOption(
@@ -163,8 +271,8 @@ class HelpSupportScreen extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
+              children: [
+                const Text(
                   'ADVOK Support Team',
                   style: TextStyle(
                     fontSize: 13,
@@ -174,10 +282,10 @@ class HelpSupportScreen extends StatelessWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  'Available Mon–Sat · 9AM–8PM EST',
-                  style: TextStyle(
+                  _hours,
+                  style: const TextStyle(
                     fontSize: 12,
                     height: 16 / 12,
                     color: AppColors.textGrey555,
@@ -199,6 +307,7 @@ class _HelpOption extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.iconColor,
+    this.badge = 0,
   });
 
   final String icon;
@@ -208,6 +317,9 @@ class _HelpOption extends StatelessWidget {
 
   /// Recolors the icon when the asset's own color doesn't match the design.
   final Color? iconColor;
+
+  /// Unread count shown as a pill before the chevron (0 hides it).
+  final int badge;
 
   @override
   Widget build(BuildContext context) {
@@ -261,6 +373,8 @@ class _HelpOption extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -272,6 +386,25 @@ class _HelpOption extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (badge > 0) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.textPrimary,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: Text(
+                    '$badge',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      height: 1.5,
+                      color: AppColors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               SvgPicture.asset(
                 'assets/icons/ic_chevron_right_grey.svg',
                 width: 14,

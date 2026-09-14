@@ -7,6 +7,7 @@ import type {
 } from '../models';
 import { saveDb } from '../services/db.service';
 import { storePhoto } from '../services/storage.service';
+import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
 import {
   missingFields,
   parseBarAdmissions,
@@ -20,6 +21,9 @@ function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile
   user.onboardedAt = new Date().toISOString();
   user.rejectionReason = undefined;
   saveDb();
+  publishToAdmins('registrations', { userId: user.id, role: user.role });
+  publishToAdmins('users', { userId: user.id });
+  publishToUser(user.id, 'account', { status: user.status });
   return user;
 }
 
@@ -116,8 +120,17 @@ export function submitLawStudent(req: AuthedRequest, res: Response) {
 }
 
 /** Law firm onboarding — firm details + legal team. */
-export function submitLawFirm(req: AuthedRequest, res: Response) {
+export async function submitLawFirm(req: AuthedRequest, res: Response) {
   const body = req.body ?? {};
+  // Firm logo arrives as a data URL; S3 when configured, else stored inline.
+  if (typeof body.photo === 'string' && body.photo) {
+    try {
+      body.photo = await storePhoto(body.photo, `photos/${req.user!.id}`);
+    } catch (err) {
+      console.error('Logo upload to S3 failed:', err);
+      return res.status(502).json({ error: 'Logo upload failed, try again' });
+    }
+  }
   const missing = missingFields(body, [
     'firmName',
     'foundedYear',
@@ -146,6 +159,7 @@ export function submitLawFirm(req: AuthedRequest, res: Response) {
     state: body.state,
     totalLawyers: body.totalLawyers ?? '',
     lawyers: Array.isArray(body.lawyers) ? body.lawyers : [],
+    photo: typeof body.photo === 'string' && body.photo ? body.photo : undefined,
   };
   const user = submit(req, profile);
   return res.json({ status: user.status, message: 'Firm registration submitted for review' });

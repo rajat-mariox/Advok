@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../Routes/app_routes.dart';
 import '../../Services/api_service.dart';
 import '../../Services/post_login_navigator.dart';
 import '../../Utils/AppColors/app_colors.dart';
-import '../SelectCountryScreen/select_country_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -31,9 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (restored) {
       PostLoginNavigator.navigateAfterLogin(context);
     } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const SelectCountryScreen()),
-      );
+      Navigator.of(context).pushReplacementNamed(AppRoutes.selectCountry);
     }
   }
 

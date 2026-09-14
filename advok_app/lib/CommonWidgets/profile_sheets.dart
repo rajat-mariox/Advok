@@ -1360,7 +1360,7 @@ class RolePickerSheetState extends State<RolePickerSheet> {
     (
       icon: 'assets/icons/ic_role_client.svg',
       title: 'Client',
-      subtitle: 'Find & consult lawyers',
+      subtitle: 'Find & consult attorneys',
     ),
     (
       icon: 'assets/icons/ic_role_advocate.svg',

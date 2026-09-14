@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 
-import '../../AppNavigation/client_nav_screen.dart';
+import '../../Routes/app_routes.dart';
 import '../../Services/api_service.dart';
 import '../../Utils/AppColors/app_colors.dart';
 import '../../Utils/CountryData/country_catalog.dart';
 import '../../Utils/Responsive/responsive.dart';
 import '../AdvocateRegistration/advocate_registration_models.dart';
-import '../AdvocateRegistration/describe_yourself_screen.dart';
-import '../LawFirmRegistration/register_firm_screen.dart';
-import '../LawStudentRegistration/student_verification_screen.dart';
 
 enum UserRole { client, advocate, lawStudent, lawFirm }
 
@@ -41,40 +38,22 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
       switch (role) {
         case UserRole.advocate:
           AdvocateOnboardingData.current.reset();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              settings: const RouteSettings(
-                name: DescribeYourselfScreen.routeName,
-              ),
-              builder: (_) => const DescribeYourselfScreen(),
-            ),
-          );
+          Navigator.of(context).pushNamed(AppRoutes.advocateRegistration);
         case UserRole.lawStudent:
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const StudentVerificationScreen(),
-            ),
-          );
+          Navigator.of(context).pushNamed(AppRoutes.studentRegistration);
         case UserRole.lawFirm:
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              settings: const RouteSettings(
-                name: RegisterFirmScreen.routeName,
-              ),
-              builder: (_) => const RegisterFirmScreen(),
-            ),
-          );
+          Navigator.of(context).pushNamed(AppRoutes.firmRegistration);
         case UserRole.client:
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const ClientNavScreen()),
-            (route) => false,
-          );
+          // New clients tell us their name before landing on the home screen.
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(AppRoutes.clientName, (route) => false);
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -171,10 +150,7 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(
-              'assets/images/img_law_library.jpg',
-              fit: BoxFit.cover,
-            ),
+            Image.asset('assets/images/img_law_library.jpg', fit: BoxFit.cover),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -212,7 +188,7 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    'Lawyers · Clients · Students · Firms',
+                    'Attorneys · Clients · Students · Firms',
                     style: TextStyle(
                       fontSize: 12,
                       height: 16 / 12,
@@ -240,7 +216,7 @@ class _ChooseRoleScreenState extends State<ChooseRoleScreen> {
                   icon: 'assets/icons/ic_role_client.svg',
                   badgeColor: const Color(0x21333333),
                   title: 'Client',
-                  subtitle: 'Find & consult lawyers',
+                  subtitle: 'Find & consult attorneys',
                   selected: _selected == UserRole.client,
                   onTap: () => setState(() => _selected = UserRole.client),
                 ),

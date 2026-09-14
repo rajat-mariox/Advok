@@ -35,11 +35,11 @@ export const CONSULTATION_TYPES = [
 
 export const COURTS = [
   'Supreme Court',
-  'High Court',
+  'Court of Appeals',
   'District Court',
   'Family Court',
-  'Consumer Court',
-  'Tribunal',
+  'Bankruptcy Court',
+  'Tax Court',
 ];
 
 // Expertise options from add_legal_team_screen.dart
@@ -52,7 +52,49 @@ export const FIRM_EXPERTISE = [
   'Cyber Crime',
   'Property',
   'Immigration',
-  'Labour & Employment',
+  'Labor & Employment',
+];
+
+// US legal-system options mirrored from LegalTerms.us in the app's
+// country_catalog.dart — drive the admin filters and labels.
+export const US_FIRM_ROLES = [
+  'Partner',
+  'Associate',
+  'Senior Associate',
+  'Of Counsel',
+  'Counsel',
+  'Staff Attorney',
+  'Solo Practitioner',
+];
+
+export const US_YEARS_IN_PRACTICE = ['0–2 years', '3–5 years', '6–10 years', '11–20 years', '20+ years'];
+
+export const US_LICENSE_STATUSES = ['Active', 'Inactive', 'Pending Admission', 'Suspended', 'Retired'];
+
+export const US_FEDERAL_COURTS = [
+  'U.S. District Court',
+  'U.S. Court of Appeals',
+  'U.S. Bankruptcy Court',
+  'U.S. Tax Court',
+  'U.S. Court of International Trade',
+  'U.S. Court of Federal Claims',
+  'U.S. Supreme Court',
+];
+
+export const US_PRACTICE_AREAS = [
+  'Criminal Defense',
+  'Family Law',
+  'Personal Injury',
+  'Immigration',
+  'Employment Law',
+  'Real Estate',
+  'Corporate/Business Law',
+  'Bankruptcy',
+  'Estate Planning',
+  'Intellectual Property',
+  'Tax Law',
+  'Civil Litigation',
+  'Cyber Law',
 ];
 
 export const ACADEMIC_YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', 'Final Year'];

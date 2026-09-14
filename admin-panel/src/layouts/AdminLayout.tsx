@@ -21,6 +21,7 @@ import {
 } from '../components/Icon';
 import { Avatar } from '../components/ui';
 import { authFetch, logout } from '../utils/auth';
+import { useRealtime } from '../utils/realtime';
 
 interface PendingCounts {
   advocate: number;
@@ -53,6 +54,10 @@ function Item({
 export default function AdminLayout() {
   const navigate = useNavigate();
   const [counts, setCounts] = useState<PendingCounts>(EMPTY_COUNTS);
+  const [openTickets, setOpenTickets] = useState(0);
+
+  const [tick, setTick] = useState(0);
+  useRealtime(['registrations', 'users', 'support'], () => setTick((t) => t + 1));
 
   useEffect(() => {
     authFetch('/admin/registrations/counts')
@@ -60,7 +65,12 @@ export default function AdminLayout() {
         if (res.ok) setCounts(await res.json());
       })
       .catch(() => {});
-  }, []);
+    authFetch('/admin/support/tickets?status=open')
+      .then(async (res) => {
+        if (res.ok) setOpenTickets((await res.json()).counts?.open ?? 0);
+      })
+      .catch(() => {});
+  }, [tick]);
 
   return (
     <div className="shell">
@@ -80,7 +90,7 @@ export default function AdminLayout() {
         <Item to="/approvals" icon={<IconUserCheck />} label="Approvals" count={counts.total} />
 
         <div className="nav-group-label">Users</div>
-        <Item to="/advocates" icon={<IconScale />} label="Advocates" count={counts.advocate} />
+        <Item to="/advocates" icon={<IconScale />} label="Attorneys" count={counts.advocate} />
         <Item to="/clients" icon={<IconUsers />} label="Clients" />
         <Item to="/law-students" icon={<IconGraduation />} label="Law Students" count={counts.law_student} />
         <Item to="/law-firms" icon={<IconBuilding />} label="Law Firms" count={counts.law_firm} />
@@ -90,6 +100,7 @@ export default function AdminLayout() {
         <Item to="/cases" icon={<IconBriefcase />} label="Cases" />
         <Item to="/mentorships" icon={<IconUserCheck />} label="Mentorships" />
         <Item to="/legal-queries" icon={<IconChat />} label="Legal Queries" />
+        <Item to="/support" icon={<IconBell />} label="Help & Support" count={openTickets} />
         <Item to="/revenue" icon={<IconDollar />} label="Revenue" />
 
         <div className="nav-group-label">Content</div>

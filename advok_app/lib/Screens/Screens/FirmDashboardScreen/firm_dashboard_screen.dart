@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'dart:typed_data';
+
 import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
+import '../AdvocateListScreen/advocate_list_screen.dart'
+    show InitialsAvatar, decodePhotoDataUrl;
 import '../MessagesScreen/chat_screen.dart';
 import 'firm_case_details_screen.dart';
 
@@ -19,23 +24,29 @@ class _Hearing {
   final String subtitle;
 }
 
-const List<_Hearing> _hearings = [];
 
+/// A pending consultation request a client sent to this firm.
 class _ClientRequest {
   const _ClientRequest({
-    required this.avatar,
+    required this.id,
     required this.name,
     required this.matter,
     required this.timeAgo,
+    this.photoBytes,
+    this.requestedName,
+    this.requestedIndex,
   });
 
-  final String avatar;
+  final String id;
   final String name;
   final String matter;
   final String timeAgo;
-}
+  final Uint8List? photoBytes;
 
-const List<_ClientRequest> _requests = [];
+  /// Set when the client picked one of the firm's attorneys directly.
+  final String? requestedName;
+  final int? requestedIndex;
+}
 
 class _Lawyer {
   _Lawyer({
@@ -66,6 +77,30 @@ class FirmCase {
     this.filed = '',
   });
 
+  /// Builds a card from the backend's /cases response (firm view: every
+  /// case opened by an attorney on the firm's team).
+  factory FirmCase.fromApi(Map<String, dynamic> json) {
+    String cap(String s) =>
+        s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+    String fmt(String? iso) {
+      final d = iso == null ? null : DateTime.tryParse(iso);
+      if (d == null) return '—';
+      const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${m[d.month - 1]} ${d.day}, ${d.year}';
+    }
+    return FirmCase(
+      number: json['caseNumber'] as String? ?? '',
+      title: json['title'] as String? ?? 'Untitled case',
+      client: json['clientName'] as String? ?? 'Client',
+      lawyer: json['advocateName'] as String? ?? 'Attorney',
+      status: cap(json['status'] as String? ?? 'active'),
+      nextDate: fmt(json['nextHearing'] as String?),
+      priority: cap(json['priority'] as String? ?? 'medium'),
+      filed: fmt((json['filedDate'] ?? json['createdAt']) as String?),
+    );
+  }
+
   final String number;
   final String title;
   final String client;
@@ -76,7 +111,6 @@ class FirmCase {
   final String filed;
 }
 
-const List<FirmCase> _cases = [];
 
 class _ScheduleItem {
   const _ScheduleItem({
@@ -103,13 +137,13 @@ class FirmDashboardScreen extends StatefulWidget {
   State<FirmDashboardScreen> createState() => _FirmDashboardScreenState();
 }
 
-class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
+class _FirmDashboardScreenState extends State<FirmDashboardScreen> with RealtimeRefresh {
   int _tab = 0;
   int _caseFilter = 0;
 
   static const List<String> _tabs = [
     'Overview',
-    'Lawyers',
+    'Attorneys',
     'Cases',
     'Calendar',
   ];
@@ -121,7 +155,23 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
     'Closed',
   ];
 
-  final List<_ClientRequest> _pendingRequests = List.of(_requests);
+  /// Pending requests from the backend (bookings where this firm is the
+  /// provider). Accept/decline go through the same endpoints attorneys use.
+  List<_ClientRequest> _pendingRequests = [];
+  final Set<String> _respondingIds = <String>{};
+
+  /// Cases opened by the firm's attorneys (backend, firm view).
+  List<FirmCase> _cases = [];
+
+  /// Today's confirmed consultations booked with the firm, one row per call:
+  /// which attorney, which client, what time.
+  List<_Hearing> _hearings = [];
+
+  /// Revenue from consultations clients booked with the firm (confirmed or
+  /// completed), regardless of which attorney was assigned.
+  double _totalRevenue = 0;
+  double _monthRevenue = 0;
+  int _paidConsultations = 0;
 
   /// Lawyers the firm added during onboarding, mapped onto the card model.
   final List<_Lawyer> _lawyers = _lawyersFromSession();
@@ -133,7 +183,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
       for (final entry in raw)
         if (entry is Map)
           _Lawyer(
-            name: _entryField(entry, 'fullName', 'Unnamed Lawyer'),
+            name: _entryField(entry, 'fullName', 'Unnamed Attorney'),
             role: _roleFor(entry),
             caseCount: 0,
             available: true,
@@ -153,19 +203,315 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
   static String _roleFor(Map<dynamic, dynamic> entry) {
     final designation = entry['designation']?.toString().trim() ?? '';
     final expertise = entry['expertise']?.toString().trim() ?? '';
-    if (designation.isEmpty && expertise.isEmpty) return 'Lawyer';
+    if (designation.isEmpty && expertise.isEmpty) return 'Attorney';
     if (designation.isEmpty) return expertise;
     if (expertise.isEmpty) return designation;
     return '$designation · $expertise';
   }
 
-  void _declineRequest(_ClientRequest request) {
-    setState(() => _pendingRequests.remove(request));
+  static const List<String> _monthLabels = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    listenRealtime({'bookings', 'cases'}, (_) {
+      _loadRequests();
+      _loadCases();
+    });
+    _loadRequests();
+    _loadCases();
   }
 
-  void _acceptRequest(_ClientRequest request) {
-    setState(() => _pendingRequests.remove(request));
+  Future<void> _loadCases() async {
+    try {
+      final result = await ApiService.fetchCases();
+      if (!mounted) return;
+      setState(() => _cases = result.map(FirmCase.fromApi).toList());
+    } on ApiException {
+      // Keep the empty state.
+    }
   }
+
+  static String _timeAgo(String? iso) {
+    final t = iso == null ? null : DateTime.tryParse(iso);
+    if (t == null) return '';
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'Just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
+  }
+
+  Future<void> _loadRequests() async {
+    final List<Map<String, dynamic>> result;
+    try {
+      result = await ApiService.fetchBookings();
+    } on ApiException {
+      return; // Dashboard still renders with its empty state.
+    }
+    if (!mounted) return;
+    final requests = <_ClientRequest>[];
+    final now = DateTime.now();
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final todayIso = '$monthKey-${now.day.toString().padLeft(2, '0')}';
+    double total = 0;
+    double month = 0;
+    int paid = 0;
+    final today = <({int minutes, _Hearing row})>[];
+    for (final b in result) {
+      if (b['incoming'] != true) continue;
+      final status = b['status'] as String?;
+      if (status == 'confirmed' || status == 'completed') {
+        final amount = (b['amount'] as num?)?.toDouble() ?? 0;
+        total += amount;
+        paid += 1;
+        if ((b['date'] as String? ?? '').startsWith(monthKey)) month += amount;
+      }
+      if (status == 'confirmed' && b['date'] == todayIso) {
+        final time = b['time'] as String? ?? '';
+        final attorney =
+            ((b['assignedAttorney'] as Map<String, dynamic>?)?['name'] as String?)
+                    ?.trim() ??
+                '';
+        final client = b['clientName'] as String? ?? 'Client';
+        final kind = switch (b['consultationType'] as String? ?? '') {
+          'phone_call' => 'Voice call',
+          'office_visit' => 'Office visit',
+          _ => 'Video call',
+        };
+        today.add((
+          minutes: _slotMinutes(time),
+          row: _Hearing(
+            time: time,
+            title: attorney.isEmpty
+                ? '$kind with $client'
+                : '$attorney · $kind with $client',
+            subtitle: attorney.isEmpty
+                ? 'No attorney assigned yet'
+                : "$attorney's consultation · billed to the firm",
+          ),
+        ));
+      }
+      if (status != 'pending') continue;
+      final date = b['date'] as String? ?? '';
+      final day = DateTime.tryParse(date);
+      final dateLabel =
+          day == null ? date : '${_monthLabels[day.month - 1]} ${day.day}';
+      final kind = switch (b['consultationType'] as String? ?? '') {
+        'phone_call' => 'Phone Call',
+        'office_visit' => 'Office Visit',
+        _ => 'Video Call',
+      };
+      final requested = b['requestedAttorney'] as Map<String, dynamic>?;
+      final requestedName = (requested?['name'] as String? ?? '').trim();
+      requests.add(_ClientRequest(
+        id: b['id'] as String? ?? '',
+        name: b['clientName'] as String? ?? 'Client',
+        matter: '$kind · $dateLabel, ${b['time'] as String? ?? ''}'
+            '${requestedName.isNotEmpty ? ' · For $requestedName' : ''}',
+        timeAgo: _timeAgo(b['createdAt'] as String?),
+        photoBytes: decodePhotoDataUrl(b['clientPhoto'] as String?),
+        requestedName: requestedName.isEmpty ? null : requestedName,
+        requestedIndex: (requested?['index'] as num?)?.toInt(),
+      ));
+    }
+    today.sort((a, b) => a.minutes.compareTo(b.minutes));
+    setState(() {
+      _pendingRequests = requests;
+      _hearings = [for (final t in today) t.row];
+      _totalRevenue = total;
+      _monthRevenue = month;
+      _paidConsultations = paid;
+    });
+  }
+
+  /// '10:00 AM' -> minutes since midnight, for ordering today's rows.
+  static int _slotMinutes(String time) {
+    final m = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false)
+        .firstMatch(time.trim());
+    if (m == null) return 0;
+    var h = int.parse(m.group(1)!) % 12;
+    if (m.group(3)!.toUpperCase() == 'PM') h += 12;
+    return h * 60 + int.parse(m.group(2)!);
+  }
+
+  static String _money(double v) {
+    final whole = v.truncateToDouble() == v;
+    return '\$${whole ? v.toStringAsFixed(0) : v.toStringAsFixed(2)}';
+  }
+
+  /// Team attorneys from the firm's onboarding, in the order the backend
+  /// keeps them (the index is what the accept call sends).
+  List<Map<dynamic, dynamic>> get _teamEntries {
+    final raw = Session.profile?['lawyers'];
+    if (raw is! List) return const [];
+    return [for (final e in raw) if (e is Map) e];
+  }
+
+  /// Asks which attorney will handle the consultation; null = cancelled.
+  Future<int?> _pickAttorney(_ClientRequest request) {
+    final team = _teamEntries;
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                'Assign an attorney',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.31,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                request.requestedName == null
+                    ? 'Who will handle ${request.name}\'s consultation? Their '
+                        'name and contact details are shared with the client.'
+                    : '${request.name} asked for ${request.requestedName}. '
+                        'Confirm them or pick someone else. Their contact '
+                        'details are shared with the client.',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  height: 1.5,
+                  color: AppColors.textGrey555,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                itemCount: team.length,
+                itemBuilder: (_, i) {
+                  final e = team[i];
+                  final name = _entryField(e, 'fullName', 'Attorney ${i + 1}');
+                  final sub = [
+                    _entryField(e, 'designation', ''),
+                    _entryField(e, 'barState', ''),
+                  ].where((x) => x.isNotEmpty).join(' · ');
+                  final isRequested = request.requestedIndex == i;
+                  return ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    tileColor: isRequested ? AppColors.fillGrey : null,
+                    leading: InitialsAvatar(name: name, size: 36),
+                    trailing: isRequested
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.textPrimary,
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: const Text(
+                              'Requested',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.white,
+                              ),
+                            ),
+                          )
+                        : null,
+                    title: Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.15,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    subtitle: sub.isEmpty
+                        ? null
+                        : Text(
+                            sub,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textGrey555,
+                            ),
+                          ),
+                    onTap: () => Navigator.of(sheetContext).pop(i),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _respond(_ClientRequest request, {required bool accept}) async {
+    int? attorneyIndex;
+    if (accept && _teamEntries.isNotEmpty) {
+      if (request.requestedIndex != null) {
+        // Client booked this attorney directly: accept assigns them, no
+        // picker.
+        attorneyIndex = request.requestedIndex;
+      } else {
+        attorneyIndex = await _pickAttorney(request);
+        if (attorneyIndex == null || !mounted) return; // cancelled
+      }
+    }
+    if (!_respondingIds.add(request.id)) return;
+    setState(() {});
+    try {
+      await ApiService.respondToBooking(
+        request.id,
+        accept: accept,
+        attorneyIndex: attorneyIndex,
+      );
+      if (accept && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              attorneyIndex == null
+                  ? "${request.name} confirmed — your firm's contact details "
+                      'were shared with them.'
+                  : '${request.name} confirmed — '
+                      '${_entryField(_teamEntries[attorneyIndex], 'fullName', 'the attorney')} '
+                      'was assigned and their contact details were shared.',
+            ),
+          ),
+        );
+      }
+      await _loadRequests();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } finally {
+      _respondingIds.remove(request.id);
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _declineRequest(_ClientRequest request) =>
+      _respond(request, accept: false);
+
+  void _acceptRequest(_ClientRequest request) =>
+      _respond(request, accept: true);
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +541,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
         _buildStatsGrid(),
         const SizedBox(height: 24),
         const Text(
-          "Today's Hearings",
+          "Today's Schedule",
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w800,
@@ -264,7 +610,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Our Lawyers',
+              'Our Attorneys',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -328,8 +674,8 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
         if (_lawyers.isEmpty)
           _buildEmptyState(
             icon: 'assets/icons/ic_user.svg',
-            title: 'No lawyers yet',
-            message: 'Lawyers added during onboarding will appear here.',
+            title: 'No attorneys yet',
+            message: 'Attorneys added during onboarding will appear here.',
           )
         else
           for (final (i, lawyer) in _lawyers.indexed) ...[
@@ -451,7 +797,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
             title: filter == 'All'
                 ? 'No cases yet'
                 : 'No ${filter.toLowerCase()} cases',
-            message: 'Firm cases will appear here once case tracking goes live.',
+            message: 'Cases your attorneys open for clients will appear here.',
           )
         else
           for (final (i, firmCase) in visibleCases.indexed) ...[
@@ -569,7 +915,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
                     children: [
                       _SheetInfoRow(
                         icon: 'assets/icons/ic_user.svg',
-                        label: 'Lawyer',
+                        label: 'Attorney',
                         value: item.lawyer,
                       ),
                       const SizedBox(height: 14),
@@ -652,7 +998,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
                               height: 48,
                               child: Center(
                                 child: Text(
-                                  'Message Lawyer',
+                                  'Message Attorney',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
@@ -772,11 +1118,13 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Expanded(
+            Expanded(
               child: _FirmStatCard(
                 icon: 'assets/icons/ic_stat_revenue.svg',
-                badge: '—',
-                value: r'$0',
+                badge: _paidConsultations > 0
+                    ? '$_paidConsultations paid'
+                    : '—',
+                value: _money(_totalRevenue),
                 label: 'Revenue',
               ),
             ),
@@ -800,7 +1148,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
                 icon: 'assets/icons/ic_purpose_clients.svg',
                 badge: 'Active',
                 value: '${_lawyers.length}',
-                label: 'Our Lawyers',
+                label: 'Our Attorneys',
               ),
             ),
             const SizedBox(width: 12),
@@ -830,7 +1178,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
         ),
         child: const Center(
           child: Text(
-            'No hearings scheduled today',
+            'No consultations or hearings today',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -969,21 +1317,23 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
         border: Border.all(color: AppColors.borderGrey),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(
-            height: 80,
-            child: Center(
-              child: Text(
-                'Revenue data will appear once billing goes live.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 16 / 12,
-                  color: AppColors.textGrey,
+          Row(
+            children: [
+              Expanded(
+                child: _RevenueFigure(
+                  label: 'Total earned',
+                  value: _money(_totalRevenue),
                 ),
               ),
-            ),
+              Expanded(
+                child: _RevenueFigure(
+                  label: 'This month',
+                  value: _money(_monthRevenue),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Container(
@@ -992,29 +1342,19 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> {
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: AppColors.divider)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'This month',
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.5,
-                    letterSpacing: 0.06,
-                    color: AppColors.textGrey555,
-                  ),
-                ),
-                Text(
-                  r'$0',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    height: 1.5,
-                    letterSpacing: -0.26,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
+            child: Text(
+              _paidConsultations == 0
+                  ? 'Consultations clients book with your firm are billed to '
+                      'the firm and show here once confirmed.'
+                  : '$_paidConsultations confirmed consultation'
+                      '${_paidConsultations == 1 ? '' : 's'} booked with your '
+                      'firm. Billed to the firm, not the assigned attorney.',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 16 / 12,
+                color: AppColors.textGrey,
+              ),
             ),
           ),
         ],
@@ -1765,12 +2105,14 @@ class _RequestCard extends StatelessWidget {
       child: Row(
         children: [
           ClipOval(
-            child: Image.asset(
-              request.avatar,
-              width: 46,
-              height: 46,
-              fit: BoxFit.cover,
-            ),
+            child: request.photoBytes != null
+                ? Image.memory(
+                    request.photoBytes!,
+                    width: 46,
+                    height: 46,
+                    fit: BoxFit.cover,
+                  )
+                : InitialsAvatar(name: request.name, size: 46),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1869,6 +2211,41 @@ class _RequestCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RevenueFigure extends StatelessWidget {
+  const _RevenueFigure({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            height: 1.5,
+            letterSpacing: 0.06,
+            color: AppColors.textGrey555,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            height: 1.5,
+            letterSpacing: -0.26,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }

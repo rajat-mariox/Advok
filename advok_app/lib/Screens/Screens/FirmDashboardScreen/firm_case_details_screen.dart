@@ -169,7 +169,7 @@ class _FirmCaseDetailsScreenState extends State<FirmCaseDetailsScreen> {
           const SizedBox(height: 14),
           _InfoRow(
             icon: 'assets/icons/ic_briefcase.svg',
-            label: 'Assigned Lawyer',
+            label: 'Assigned Attorney',
             value: widget.caseData.lawyer,
           ),
           const SizedBox(height: 14),
