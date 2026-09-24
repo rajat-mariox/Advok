@@ -4,3 +4,6 @@ dist/
 data/*
 !data/legal_terms.json
 .env
+# Private keys (Firebase service account, Apple .p8)
+keys/
+*.p8

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import type { AdvocateProfile, ClientProfile, DbShape, Role, UserStatus, LawFirmProfile } from '../models';
 import { autoCompletePastBookings } from './booking.controller';
 import { getDb, saveDb } from '../services/db.service';
+import { pushNotification } from '../services/notify.service';
 import { publicUser } from '../util/user.util';
 import { isValidSections } from '../validators/cms.validator';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
@@ -118,6 +119,11 @@ function review(id: string, status: UserStatus, reason?: string) {
   user.status = status;
   user.rejectionReason = status === 'rejected' ? (reason ?? 'Not specified') : undefined;
   user.reviewedAt = new Date().toISOString();
+  if (status === 'approved') {
+    pushNotification(db, user.id, 'account_update', 'Your ADVOK account is approved', 'Your details were verified. You now have full access to ADVOK.');
+  } else if (status === 'rejected') {
+    pushNotification(db, user.id, 'account_update', 'Your ADVOK registration needs attention', `Reason: ${user.rejectionReason}. Update your details and submit again.`);
+  }
   saveDb();
   publishToUser(user.id, 'account', { status: user.status });
   publishToAdmins('registrations', { userId: user.id });
@@ -272,4 +278,33 @@ export function setFirmFee(req: Request, res: Response) {
   publishToUser(user.id, 'account', { status: user.status });
   publishToAdmins('users', { userId: user.id });
   return res.json({ user: publicUser(user) });
+}
+
+/** GET /admin/notifications — newest first (last 100) + unread count. */
+export function listAdminNotifications(_req: Request, res: Response) {
+  const db = getDb();
+  const all = [...(db.adminNotifications ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return res.json({
+    notifications: all.slice(0, 100),
+    unread: all.filter((n) => !n.readAt).length,
+  });
+}
+
+/** POST /admin/notifications/read — body { ids? }; no ids marks everything read. */
+export function markAdminNotificationsRead(req: Request, res: Response) {
+  const db = getDb();
+  const ids = Array.isArray(req.body?.ids) ? new Set((req.body.ids as unknown[]).map(String)) : null;
+  const now = new Date().toISOString();
+  let changed = 0;
+  for (const n of db.adminNotifications ?? []) {
+    if (!n.readAt && (!ids || ids.has(n.id))) {
+      n.readAt = now;
+      changed += 1;
+    }
+  }
+  if (changed) {
+    saveDb();
+    publishToAdmins('adminNotifications', { read: changed });
+  }
+  return res.json({ ok: true, changed });
 }

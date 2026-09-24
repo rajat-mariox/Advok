@@ -92,23 +92,77 @@ export async function syncCaseWithCourt(
       record.filedDate = docket.dateFiled;
       changed = true;
     }
+    if (docket.lastFilingDate && docket.lastFilingDate !== link.lastFilingDate) {
+      link.lastFilingDate = docket.lastFilingDate;
+      changed = true;
+    }
 
     // Docket entries → timeline, skipping the ones already mirrored.
     const known = new Set(record.timeline.map((e) => e.externalId).filter(Boolean));
     let newEvents = 0;
+
+    // The docket header gives the day the case was opened in court and the
+    // judge it went to — worth a timeline entry even when no filings are
+    // on record yet.
+    if (docket.dateFiled && !known.has('cl-filed')) {
+      record.timeline.push({
+        id: createId(),
+        date: docket.dateFiled,
+        title: `Case filed in ${docket.court || 'court'}`,
+        description: [
+          docket.docketNumber ? `Docket ${docket.docketNumber}` : '',
+          docket.judge ? `Assigned to Judge ${docket.judge}` : '',
+          docket.natureOfSuit ? `Nature of suit: ${docket.natureOfSuit}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+        source: 'court_api',
+        externalId: 'cl-filed',
+        createdAt: now,
+      });
+      known.add('cl-filed');
+      newEvents += 1;
+    }
     for (const entry of entries) {
       const externalId = `cl-entry-${entry.entryId}`;
       if (known.has(externalId)) continue;
+      const prefix =
+        entry.kind === 'judgment' ? 'Judgment / Order: ' : entry.kind === 'hearing' ? 'Court hearing: ' : '';
       record.timeline.push({
         id: createId(),
         date: entry.date,
-        title: entry.entryNumber ? `#${entry.entryNumber} ${entry.title}` : entry.title,
+        title: `${prefix}${entry.entryNumber ? `#${entry.entryNumber} ` : ''}${entry.title}`,
         description: entry.description,
         source: 'court_api',
         externalId,
         createdAt: now,
       });
       known.add(externalId);
+      newEvents += 1;
+    }
+    // The court recorded activity on a day we have no public filing for
+    // (common when nobody has uploaded the case to RECAP): say so, so the
+    // timeline still shows when the case moved.
+    if (
+      docket.lastFilingDate &&
+      !entries.some((e) => e.date === docket.lastFilingDate) &&
+      !known.has(`cl-activity-${docket.lastFilingDate}`) &&
+      docket.lastFilingDate !== docket.dateFiled
+    ) {
+      record.timeline.push({
+        id: createId(),
+        date: docket.lastFilingDate,
+        title: 'Court activity recorded',
+        description:
+          'The court logged a filing on this day. Its text is not in the public record yet' +
+          (docket.dateTerminated && docket.lastFilingDate >= docket.dateTerminated
+            ? ' (post-termination filing).'
+            : '.'),
+        source: 'court_api',
+        externalId: `cl-activity-${docket.lastFilingDate}`,
+        createdAt: now,
+      });
+      known.add(`cl-activity-${docket.lastFilingDate}`);
       newEvents += 1;
     }
     if (newEvents > 0) {

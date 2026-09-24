@@ -4,9 +4,17 @@ import type { Request, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import {
   ADMIN_TOKEN_TTL,
-  APPLE_BUNDLE_ID,
+  APPLE_AUDIENCES,
   APP_TOKEN_TTL,
+  FIREBASE_ANDROID_API_KEY,
+  FIREBASE_ANDROID_APP_ID,
+  FIREBASE_IOS_API_KEY,
+  FIREBASE_IOS_APP_ID,
+  FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_PROJECT_ID,
+  GOOGLE_AUDIENCES,
   GOOGLE_CLIENT_ID,
+  GOOGLE_IOS_CLIENT_ID,
   OTP_TTL_MS,
 } from '../config';
 import type { AuthedRequest } from '../middlewares/auth.middleware';
@@ -112,17 +120,17 @@ export async function googleLogin(req: Request, res: Response) {
   if (typeof idToken !== 'string' || !idToken) {
     return res.status(400).json({ error: 'idToken is required' });
   }
-  if (!GOOGLE_CLIENT_ID) {
+  if (GOOGLE_AUDIENCES.length === 0) {
     return res
       .status(503)
-      .json({ error: 'Google login is not configured (set GOOGLE_CLIENT_ID)' });
+      .json({ error: 'Google login is not configured (set GOOGLE_CLIENT_ID in backend/.env)' });
   }
 
   let payload;
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: GOOGLE_CLIENT_ID,
+      audience: GOOGLE_AUDIENCES,
     });
     payload = ticket.getPayload();
   } catch {
@@ -187,7 +195,8 @@ export async function appleLogin(req: Request, res: Response) {
   let payload;
   try {
     payload = await appleSignin.verifyIdToken(identityToken, {
-      audience: APPLE_BUNDLE_ID,
+      audience: APPLE_AUDIENCES,
+      ignoreExpiration: false,
     });
   } catch {
     return res.status(401).json({ error: 'Apple sign-in could not be verified' });
@@ -269,4 +278,32 @@ export function selectRole(req: AuthedRequest, res: Response) {
 /** Current authenticated user. */
 export function me(req: AuthedRequest, res: Response) {
   return res.json({ user: publicUser(req.user!) });
+}
+
+/**
+ * GET /auth/config — public sign-in settings the app needs at runtime, so
+ * the Google client IDs live only in backend/.env (never in the app build).
+ */
+export function authConfig(_req: Request, res: Response) {
+  return res.json({
+    google: {
+      enabled: GOOGLE_CLIENT_ID.length > 0,
+      webClientId: GOOGLE_CLIENT_ID || null,
+      iosClientId: GOOGLE_IOS_CLIENT_ID || null,
+    },
+    apple: {
+      enabled: APPLE_AUDIENCES.length > 0,
+    },
+    // Public Firebase client options so the app can register for push
+    // without bundling google-services files. null → push disabled.
+    firebase:
+      FIREBASE_PROJECT_ID && FIREBASE_MESSAGING_SENDER_ID
+        ? {
+            projectId: FIREBASE_PROJECT_ID,
+            messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
+            android: FIREBASE_ANDROID_APP_ID ? { apiKey: FIREBASE_ANDROID_API_KEY, appId: FIREBASE_ANDROID_APP_ID } : null,
+            ios: FIREBASE_IOS_APP_ID ? { apiKey: FIREBASE_IOS_API_KEY, appId: FIREBASE_IOS_APP_ID } : null,
+          }
+        : null,
+  });
 }

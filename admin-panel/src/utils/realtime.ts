@@ -11,6 +11,8 @@ export type RealtimeTopic =
   | 'cases'
   | 'clients'
   | 'queries'
+  | 'mentorships'
+  | 'adminNotifications'
   | 'support'
   | 'account'
   | 'settings'

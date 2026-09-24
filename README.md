@@ -89,8 +89,14 @@ Login in development: the OTP is printed to the backend console (`[OTP] +1xxxxxx
 | `S3_PUBLIC_URL` | no | bucket URL | CloudFront / custom domain that serves the bucket. |
 | `COURTLISTENER_API_TOKEN` | no | empty | Free token from courtlistener.com. Lookup and sync work **without** it (lower rate limit). With it: higher limit, and full opinion text for Learning Content. |
 | `COURT_SYNC_INTERVAL_MINUTES` | no | `720` | How often linked open cases are re-synced from court records. `0` disables the scheduler; "Sync Now" in the app still works. |
-| `GROQ_API_KEY` | for ADVOK AI | empty | Groq API key. Without it the app shows "ADVOK AI is not connected". |
-| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Model used for the assistant. |
+| `OPENAI_API_KEY` | for ADVOK AI | empty | OpenAI key (platform.openai.com). When set, ADVOK AI, case notes and dictionary explanations use OpenAI. |
+| `OPENAI_MODEL` | no | `gpt-4o-mini` | OpenAI model. |
+| `GROQ_API_KEY` | fallback | empty | Groq key, used only when `OPENAI_API_KEY` is empty. Without either key the app shows "ADVOK AI is not connected". |
+| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model. |
+| `FIREBASE_SERVICE_ACCOUNT` | for push | empty | Path to the Firebase service-account JSON (e.g. `keys/firebase-service-account.json`, gitignored) or the JSON inline. Enables phone push via FCM. |
+| `FIREBASE_PROJECT_ID` / `FIREBASE_MESSAGING_SENDER_ID` / `FIREBASE_ANDROID_API_KEY` / `FIREBASE_ANDROID_APP_ID` / `FIREBASE_IOS_API_KEY` / `FIREBASE_IOS_APP_ID` | for push | empty | Public Firebase app settings; served to the app by `GET /auth/config` so no google-services files are bundled. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | for email | empty / 587 | Any SMTP provider (AWS SES, SendGrid, Gmail). Emails go out for bookings, case assigned, support replies, query answers and account approval. |
+| `NEWS_FEEDS` | no | SCOTUSblog, ABA Journal, Congress.gov | Legal-news RSS sources for students, `key\|Name\|url\|Tag` entries separated by `;`. Free, no key. |
 
 ### `admin-panel/.env` / `.env.production`
 
@@ -450,6 +456,12 @@ The base dictionary is **Black's Law Dictionary, 2nd Edition (1910)**, public do
 
 Base path: `/api`. Send `Authorization: Bearer <token>` on protected routes. Errors are `{ error: string }` with 4xx/5xx.
 
+### Notifications
+
+- **In-app** (every role): `pushNotification()` stores an `AppNotification`, pushes it live over SSE, and also sends a **phone push** (FCM, when configured) and, for key types, an **email** (SMTP, when configured). New chat messages send a push too.
+- **Admin bell**: `AdminNotification` records for new registrations, support tickets/replies, legal queries, bookings and first student–attorney messages. `GET /admin/notifications`, `POST /admin/notifications/read` (`{ ids? }`). Desktop pop-ups while the tab is in the background (Settings → Desktop Alerts).
+- **Push devices**: `POST /profile/push-token` `{ token, platform }` on login, `DELETE /profile/push-token` `{ token }` on logout.
+
 ### Live updates — `/events`
 
 | Method | Path | Auth | Notes |
@@ -581,6 +593,8 @@ Base path: `/api`. Send `Authorization: Bearer <token>` on protected routes. Err
 | POST | `/operations/clear` | Wipe bookings, cases, relationships, messages, notifications (users untouched). |
 | GET / PUT | `/pricing` | `ConsultationPricing`. |
 | GET / PUT | `/support-contact` | `SupportContact`. |
+| GET | `/mentorships` | Law student ↔ attorney conversations (a "mentorship" starts when a student messages an attorney): parties, last message, counts, status active / awaiting reply. |
+| GET | `/mentorships/:studentId/:attorneyId/messages` | The full conversation (read-only). |
 | GET | `/queries?status=&category=` | Law students' legal queries with student name/college/contact, pending first → `{ queries, counts: { total, pending, answered } }`. |
 | POST | `/queries/:id/answer` | `{ response, responderName? }` — sends the answer, notifies the student (`query_answered`); calling again updates the reply. |
 | DELETE | `/queries/:id` | Removes the query and its notifications. |
@@ -686,7 +700,7 @@ Routes in [`admin-panel/src/App.tsx`](admin-panel/src/App.tsx). Login at `/login
 | `/law-firms` | Firms, their teams, per-firm consultation fee | `/admin/users?role=law_firm`, `/admin/users/:id/firm-fee` |
 | `/bookings` | All consultations with filters, detail panel | `/admin/bookings` |
 | `/cases` | All cases with parties, status, court | `/admin/cases` |
-| `/mentorships` | Mentorship requests | Seed data (`utils/seed.ts`) — not yet wired to the backend |
+| `/mentorships` | Student ↔ attorney conversations with filters (active / awaiting reply), search, and a drawer showing the whole conversation | `/admin/mentorships` |
 | `/legal-queries` | Law students' legal queries: pending/answered filter, category filter, drawer to write or update the answer (shown as "ADVOK Legal Team" by default), delete | `/admin/queries` |
 | `/support` | Support tickets, reply, change status | `/admin/support/tickets` |
 | `/revenue` | Revenue overview | Bookings + seed helpers |
@@ -767,7 +781,7 @@ Screens/                      All screens (below)
   - *Generate Case Notes* → `CaseNotesPickerScreen` (pick a published case) → `CaseNotesScreen`: IRAC sections (Facts, Issue, Rule, Holding, Reasoning, Significance), tappable key terms, copy-all. Also reachable from a case's reader screen.
   - *Legal Dictionary* → `LegalDictionaryScreen`: search + A–Z browse of ~11k terms → `LegalTermScreen`: historical definition plus "Explain in plain English" by ADVOK AI (cached). Unknown terms go straight to the AI explanation.
   - Internship Portal, Mock Tests, Mentorship Access, Senior Queries: locked until verified (UI only).
-- **Find Mentors** (`FindMentorsScreen` + request / availability / message / sent screens): mentorship requests to attorneys (UI flow; consultations use the normal booking API).
+- **Attorneys** tab (`AdvocateListScreen`): every verified attorney. On an attorney's profile a law student gets **Message for Guidance** (instead of Book), which opens the chat; the admin sees these conversations under Mentorships.
 - **Legal Queries** (`LegalQueriesScreen`): *Ask a Question* (category + question ≤ 500 chars → `POST /queries`) and *My Queries* (pull-to-refresh, Pending/Answered chips, expand to read the ADVOK team's answer). The student is notified when an answer arrives.
 - **Profile** (`StudentProfileScreen`).
 

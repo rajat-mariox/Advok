@@ -1,5 +1,7 @@
 import type { AppNotification, DbShape, NotificationType } from '../models';
 import { createId } from './db.service';
+import { emailOf, sendEmail, shouldEmail } from './email.service';
+import { sendPush } from './push.service';
 import { publishToUser, type RealtimeTopic } from './realtime.service';
 
 /**
@@ -26,7 +28,22 @@ export function pushNotification(
     ticketId: refs.ticketId,
     createdAt: new Date().toISOString(),
   };
-  db.notifications.push(record);  publishToUser(userId, 'notifications', { type });
+  db.notifications.push(record);
+  publishToUser(userId, 'notifications', { type });
+  // Outside the app: phone push (FCM) and, for key events, email.
+  sendPush(db, userId, title, body, {
+    type,
+    notificationId: record.id,
+    caseId: refs.caseId,
+    bookingId: refs.bookingId,
+    ticketId: refs.ticketId,
+    queryId: refs.queryId,
+  });
+  if (shouldEmail(type)) {
+    const user = db.users.find((u) => u.id === userId);
+    const to = user ? emailOf(user) : undefined;
+    if (to) sendEmail(to, title, body);
+  }
   const topic: RealtimeTopic | null = type.startsWith('booking_')
     ? 'bookings'
     : type.startsWith('case_')
@@ -60,6 +77,7 @@ export function pushSystemMessage(
     system: true,
     meta,
     sentAt: new Date().toISOString(),
-  });  publishToUser(toId, 'messages', { peerId: fromId });
+  });
+  publishToUser(toId, 'messages', { peerId: fromId });
   publishToUser(fromId, 'messages', { peerId: toId });
 }

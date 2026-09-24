@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { desktopAlertsEnabled, setDesktopAlertsEnabled } from '../components/NotificationBell';
 import { PageHeader } from '../components/ui';
 import {
   fetchPricing,
@@ -249,7 +250,7 @@ function SettingRow({
 
 export default function SettingsPage() {
   const [autoApprove, setAutoApprove] = useState(false);
-  const [notifications, setNotifications] = useState(true);
+  const [notifications, setNotifications] = useState(desktopAlertsEnabled);
   const [maintenance, setMaintenance] = useState(false);
   const [aiAssistant, setAiAssistant] = useState(true);
 
@@ -272,10 +273,13 @@ export default function SettingsPage() {
               onToggle={() => setAutoApprove(!autoApprove)}
             />
             <SettingRow
-              title="Admin Notifications"
-              sub="Push & email enabled"
+              title="Desktop Alerts"
+              sub="Browser pop-up for new registrations, tickets, queries and bookings while this tab is in the background (this browser only)"
               on={notifications}
-              onToggle={() => setNotifications(!notifications)}
+              onToggle={() => {
+                setDesktopAlertsEnabled(!notifications);
+                setNotifications(!notifications);
+              }}
             />
             <SettingRow
               title="ADVOK AI Assistant"

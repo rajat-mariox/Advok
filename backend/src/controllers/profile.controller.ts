@@ -6,10 +6,11 @@ import type {
   LawFirmProfile,
   LawStudentProfile,
 } from '../models';
-import { saveDb } from '../services/db.service';
+import { getDb, saveDb } from '../services/db.service';
 import { storePhoto } from '../services/storage.service';
 import { str } from '../util/string.util';
 import { publicUser } from '../util/user.util';
+import { addPushToken, removePushToken } from '../services/push.service';
 
 /**
  * Edit Profile for every app role. Only display fields are editable here —
@@ -85,4 +86,27 @@ export async function updateProfile(req: AuthedRequest, res: Response) {
 
   saveDb();
   return res.json({ user: publicUser(user) });
+}
+
+/** POST /profile/push-token — body { token, platform }: register this device for push. */
+export function registerPushToken(req: AuthedRequest, res: Response) {
+  const user = req.user!;
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  const platform = typeof req.body?.platform === 'string' ? req.body.platform.trim().slice(0, 20) : 'unknown';
+  if (!token || token.length > 4096) return res.status(400).json({ error: 'token is required' });
+  const db = getDb();
+  // A device belongs to one account at a time (shared phones, re-login).
+  removePushToken(db, token);
+  addPushToken(user, token, platform);
+  saveDb();
+  return res.json({ ok: true });
+}
+
+/** DELETE /profile/push-token — body { token }: stop pushes to this device (logout). */
+export function unregisterPushToken(req: AuthedRequest, res: Response) {
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  if (!token) return res.status(400).json({ error: 'token is required' });
+  removePushToken(getDb(), token);
+  saveDb();
+  return res.json({ ok: true });
 }

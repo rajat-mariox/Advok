@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../CommonWidgets/session_avatar.dart';
 import '../../../Services/api_service.dart';
@@ -49,7 +50,34 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
 
   int _selectedChip = 0;
   int _selectedNewsFilter = 0;
-  final Set<int> _savedCases = <int>{};
+  /// Ids of bookmarked cases. Persisted per user on the device so the Saved
+  /// tab survives restarts and list reloads (ids, not list positions).
+  Set<String> _savedIds = <String>{};
+
+  String get _savedPrefsKey => 'saved_cases_${Session.userId ?? 'anon'}';
+
+  Future<void> _loadSaved() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList(_savedPrefsKey) ?? const [];
+      if (!mounted) return;
+      setState(() => _savedIds = ids.toSet());
+    } catch (_) {
+      // Storage unavailable: bookmarks just won't persist this run.
+    }
+  }
+
+  Future<void> _persistSaved() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_savedPrefsKey, _savedIds.toList());
+    } catch (_) {}
+  }
+
+  bool _isSaved(CaseStudy c) => _savedIds.contains(c.id);
+
+  List<CaseStudy> get _savedCaseList =>
+      _cases.where(_isSaved).toList();
 
   /// Admin-curated "Cases to Read" from the backend (published only).
   List<CaseStudy> _cases = [];
@@ -74,6 +102,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
       _loadCases();
       _loadNews();
     });
+    _loadSaved();
     _loadAdvocates();
     _loadCases();
     _loadNews();
@@ -469,7 +498,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
       MaterialPageRoute(
         builder: (_) => CaseStudyScreen(
           caseStudy: _cases[index],
-          saved: _savedCases.contains(index),
+          saved: _isSaved(_cases[index]),
           onToggleSaved: () => _toggleSaved(index),
         ),
       ),
@@ -571,7 +600,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
   }
 
   List<Widget> _buildSavedSection() {
-    final saved = _savedCases.toList()..sort();
+    final saved = _savedCaseList;
     return [
       const Padding(
         padding: EdgeInsets.symmetric(horizontal: 20),
@@ -592,10 +621,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
           'No saved cases yet. Bookmark cases to find them here.',
         )
       else
-        for (final index in saved)
+        for (final c in saved)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: _buildSavedCaseCard(index),
+            child: _buildSavedCaseCard(c),
           ),
       const SizedBox(height: 8),
       const Padding(
@@ -616,8 +645,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
     ];
   }
 
-  Widget _buildSavedCaseCard(int index) {
-    final data = _cases[index];
+  Widget _buildSavedCaseCard(CaseStudy data) {
     return Material(
       color: AppColors.fillGrey,
       borderRadius: BorderRadius.circular(18),
@@ -629,7 +657,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
               builder: (_) => CaseStudyScreen(
                 caseStudy: data,
                 saved: true,
-                onToggleSaved: () => _toggleSaved(index),
+                onToggleSaved: () => _toggleSavedCase(data),
               ),
             ),
           );
@@ -1126,19 +1154,38 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
     );
   }
 
-  void _toggleSaved(int index) {
+  void _toggleSaved(int index) => _toggleSavedCase(_cases[index]);
+
+  void _toggleSavedCase(CaseStudy c) {
+    final nowSaved = !_savedIds.contains(c.id);
     setState(() {
-      if (_savedCases.contains(index)) {
-        _savedCases.remove(index);
+      if (nowSaved) {
+        _savedIds.add(c.id);
       } else {
-        _savedCases.add(index);
+        _savedIds.remove(c.id);
       }
     });
+    _persistSaved();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(nowSaved ? 'Saved — find it under Saved.' : 'Removed from Saved.'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          action: nowSaved
+              ? SnackBarAction(
+                  label: 'View',
+                  onPressed: () => setState(() => _selectedChip = 3),
+                )
+              : null,
+        ),
+      );
   }
 
   Widget _buildCaseCard(int index) {
     final data = _cases[index];
-    final saved = _savedCases.contains(index);
+    final saved = _isSaved(data);
     return Material(
       color: AppColors.fillGrey,
       borderRadius: BorderRadius.circular(18),

@@ -4,7 +4,7 @@ import type { CaseRecord } from './case.model';
 import type { CmsPage } from './cms.model';
 import type { LegalTermOverride } from './dictionary.model';
 import type { CaseStudyRecord } from './learning.model';
-import type { AppNotification, ChatMessageRecord } from './message.model';
+import type { AdminNotification, AppNotification, ChatMessageRecord } from './message.model';
 import type { OtpRecord } from './otp.model';
 import type { LegalQueryRecord } from './query.model';
 import type { ClientRelationship } from './relationship.model';
@@ -42,4 +42,6 @@ export interface DbShape {
   legalTerms?: LegalTermOverride[];
   /** Law students' legal questions, answered from the admin panel. */
   legalQueries?: LegalQueryRecord[];
+  /** Admin panel bell notifications. */
+  adminNotifications?: AdminNotification[];
 }

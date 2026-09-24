@@ -101,7 +101,7 @@ export default function AdvokAiPage() {
             status
               ? connected
                 ? `${status.provider} · ${status.model}`
-                : 'Set GROQ_API_KEY in backend/.env'
+                : status.keyError || 'Set OPENAI_API_KEY in backend/.env'
               : statusError || 'Reading status from the backend'
           }
         />

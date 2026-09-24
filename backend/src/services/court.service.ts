@@ -7,6 +7,8 @@
 //
 // State courts have no unified API, so manual entry remains the fallback
 // for them: a case without a docket link is simply never synced.
+import fs from 'fs';
+import path from 'path';
 import { COURTLISTENER_API_TOKEN } from '../config';
 
 const BASE = 'https://www.courtlistener.com';
@@ -14,6 +16,52 @@ const SEARCH = `${BASE}/api/rest/v4/search/`;
 const TIMEOUT_MS = 15_000;
 /** Cap on parties kept per docket. */
 const MAX_PARTIES = 20;
+
+/** A US federal district / bankruptcy court the attorney can narrow a search to. */
+export interface UsCourt {
+  /** CourtListener court id, e.g. 'txsd'. */
+  id: string;
+  name: string;
+  short: string;
+  state: string;
+  kind: 'district' | 'bankruptcy';
+}
+
+let courtsCache: UsCourt[] | null = null;
+
+/** Active federal district + bankruptcy courts (bundled from CourtListener). */
+export function usCourts(): UsCourt[] {
+  if (courtsCache) return courtsCache;
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', '..', 'data', 'us_courts.json'), 'utf-8'),
+    ) as { courts?: UsCourt[] };
+    courtsCache = raw.courts ?? [];
+  } catch {
+    courtsCache = [];
+  }
+  return courtsCache;
+}
+
+export function courtsForState(state: string): UsCourt[] {
+  const s = state.trim().toLowerCase();
+  return usCourts().filter((c) => c.state.toLowerCase() === s);
+}
+
+/** Human name for a CourtListener court id, when we know it. */
+export function courtName(id: string): string | undefined {
+  return usCourts().find((c) => c.id === id)?.name;
+}
+
+/**
+ * A pasted CourtListener docket link or bare numeric id identifies exactly
+ * one docket: https://www.courtlistener.com/docket/18625524/united-states-v-google/
+ */
+export function parseDocketId(input: string): number | null {
+  const q = input.trim();
+  const m = /courtlistener\.com\/docket\/(\d+)/i.exec(q) ?? /^\s*#?(\d{5,})\s*$/.exec(q);
+  return m ? Number(m[1]) : null;
+}
 
 /** One docket the attorney can link a case to. */
 export interface CourtDocketMatch {
@@ -28,6 +76,8 @@ export interface CourtDocketMatch {
   dateFiled?: string;
   /** Present once the court closed the docket. */
   dateTerminated?: string;
+  /** Day of the most recent filing the court recorded (token-only field). */
+  lastFilingDate?: string;
   /** PACER "nature of suit", e.g. '410 Anti-Trust'. */
   natureOfSuit?: string;
   /** Statutory cause of action, e.g. '15:1 Antitrust Litigation'. */
@@ -52,6 +102,28 @@ export interface CourtDocketEntry {
   title: string;
   description?: string;
   url: string;
+  /** What the entry is, judged from its text: a decision, a court date, or a routine filing. */
+  kind: 'judgment' | 'hearing' | 'filing';
+}
+
+/** Classifies a docket entry from its text so the timeline can call out decisions and court dates. */
+export function classifyEntry(text: string): CourtDocketEntry['kind'] {
+  const t = text.toLowerCase();
+  // A party asking for something is a filing, not a decision — unless the
+  // entry also records the court granting/denying it.
+  if (
+    /^\s*(joint |unopposed |emergency )?(motion|request|notice|memorandum in|reply|response|brief)\b/.test(t) &&
+    !/\border (granting|denying)\b/.test(t)
+  ) {
+    return 'filing';
+  }
+  if (/\b(judgment|verdict|sentenc|memorandum opinion|opinion and order|findings of fact|dismiss(ed|al|ing) (the )?(case|action|complaint|indictment)|order granting|order denying|final order|decree|acquit|convict|plea agreement|guilty)\b/.test(t)) {
+    return 'judgment';
+  }
+  if (/\b(minute entry|hearing|trial|proceedings held|arraignment|conference|oral argument|sentencing|status conference|pretrial|initial appearance|detention hearing)\b/.test(t)) {
+    return 'hearing';
+  }
+  return 'filing';
 }
 
 interface SearchDocketHit {
@@ -166,6 +238,7 @@ function toMatch(d: SearchDocketHit): CourtDocketMatch | null {
     judge: d.assignedTo || undefined,
     dateFiled: d.dateFiled || undefined,
     dateTerminated: d.dateTerminated || undefined,
+    lastFilingDate: undefined,
     natureOfSuit: d.suitNature?.trim() || undefined,
     cause: d.cause?.trim() || undefined,
     jurisdictionType: d.jurisdictionType?.trim() || undefined,
@@ -185,34 +258,138 @@ function quote(value: string): string {
   return `"${value.replace(/["\\]/g, ' ').trim()}"`;
 }
 
+export interface LookupOptions {
+  /** Restrict to these CourtListener court ids (space-separated works too). */
+  courtIds?: string[];
+  /** Restrict to every federal court of this US state. */
+  state?: string;
+}
+
 /**
- * Finds dockets by docket number (exact field match first, then a free-text
- * search so a case name also works). Up to 10 matches, most relevant first.
+ * Finds dockets for the attorney's Add Case flow.
+ * - A CourtListener docket link / id returns exactly that docket.
+ * - Otherwise: exact docket-number match (optionally within one state's or
+ *   one court's dockets), then a free-text search so a case name works too.
+ * The same docket number exists in many courts, and CourtListener sometimes
+ * holds two copies of one docket, so results are de-duplicated per court.
  */
 export async function lookupDocket(
   query: string,
-): Promise<{ available: boolean; results: CourtDocketMatch[] }> {
+  opts: LookupOptions = {},
+): Promise<{ available: boolean; results: CourtDocketMatch[]; exact: boolean }> {
   const q = query.trim();
+
+  const direct = parseDocketId(q);
+  if (direct) {
+    const one = await fetchDocket(direct);
+    return { available: true, results: one ? [one] : [], exact: true };
+  }
+
+  const courtIds = [
+    ...(opts.courtIds ?? []),
+    ...(opts.state ? courtsForState(opts.state).map((c) => c.id) : []),
+  ];
+  const courtParam: Record<string, string> = courtIds.length ? { court: [...new Set(courtIds)].join(' ') } : {};
+
   let hits = await search<SearchDocketHit>({
     type: 'd',
     q: `docketNumber:${quote(q)}`,
     order_by: 'dateFiled desc',
+    ...courtParam,
   });
   if (hits.length === 0) {
-    hits = await search<SearchDocketHit>({ type: 'd', q, order_by: 'score desc' });
+    hits = await search<SearchDocketHit>({ type: 'd', q, order_by: 'score desc', ...courtParam });
   }
-  const results = hits
-    .map(toMatch)
-    .filter((m): m is CourtDocketMatch => m !== null)
-    .slice(0, 10);
-  return { available: true, results };
+
+  // One row per (court, docket number): keep the copy with the most
+  // information (a filing date, a judge, parties).
+  const byKey = new Map<string, CourtDocketMatch>();
+  for (const hit of hits) {
+    const m = toMatch(hit);
+    if (!m) continue;
+    const key = `${m.courtId}|${m.docketNumber.toLowerCase()}`;
+    const score = (m.dateFiled ? 2 : 0) + (m.judge ? 1 : 0) + Math.min(m.parties.length, 5) + (m.natureOfSuit ? 1 : 0);
+    const prev = byKey.get(key);
+    const prevScore = prev ? (prev.dateFiled ? 2 : 0) + (prev.judge ? 1 : 0) + Math.min(prev.parties.length, 5) + (prev.natureOfSuit ? 1 : 0) : -1;
+    if (!prev || score > prevScore) byKey.set(key, m);
+  }
+  const results = [...byKey.values()].slice(0, 10);
+  return { available: true, results, exact: results.length === 1 };
 }
 
 /** Current header data for one docket, or null when the provider no longer has it. */
 export async function fetchDocket(docketId: number): Promise<CourtDocketMatch | null> {
   const hits = await search<SearchDocketHit>({ type: 'd', q: `docket_id:${docketId}` });
   const hit = hits.find((h) => h.docket_id === docketId) ?? hits[0];
-  return hit ? toMatch(hit) : null;
+  const match = hit ? toMatch(hit) : null;
+  if (!match || !COURTLISTENER_API_TOKEN) return match;
+  // The docket record itself (token-only) knows the latest filing date and
+  // the terminated date even when no filings are public.
+  try {
+    const res = await fetch(`${BASE}/api/rest/v4/dockets/${docketId}/`, {
+      headers: headers(),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.ok) {
+      const d = (await res.json()) as {
+        date_last_filing?: string | null;
+        date_terminated?: string | null;
+        assigned_to_str?: string | null;
+      };
+      match.lastFilingDate = d.date_last_filing || undefined;
+      match.dateTerminated = d.date_terminated || match.dateTerminated;
+      if (!match.judge && d.assigned_to_str?.trim()) match.judge = d.assigned_to_str.trim();
+    }
+  } catch {
+    // Header from search is enough.
+  }
+  return match;
+}
+
+interface DocketEntryRow {
+  id?: number;
+  entry_number?: number | null;
+  date_filed?: string | null;
+  description?: string | null;
+  recap_documents?: { description?: string | null; absolute_url?: string | null }[];
+}
+
+/**
+ * Token-only: the complete, ordered docket entries straight from the
+ * docket (up to `limit`, newest first). Falls back to search without a token.
+ */
+async function fetchDocketEntriesDirect(docketId: number, limit: number): Promise<CourtDocketEntry[] | null> {
+  if (!COURTLISTENER_API_TOKEN) return null;
+  const params = new URLSearchParams({
+    docket: String(docketId),
+    order_by: '-date_filed',
+    page_size: String(Math.min(limit, 100)),
+  });
+  const res = await fetch(`${BASE}/api/rest/v4/docket-entries/?${params}`, {
+    headers: headers(),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { results?: DocketEntryRow[] };
+  const out: CourtDocketEntry[] = [];
+  for (const r of data.results ?? []) {
+    if (!r.id || !r.date_filed) continue;
+    const description = (r.description ?? '').trim();
+    const short = (r.recap_documents?.[0]?.description ?? '').trim();
+    const text = description || short;
+    if (!text) continue;
+    const doc = r.recap_documents?.[0]?.absolute_url;
+    out.push({
+      entryId: r.id,
+      entryNumber: r.entry_number ?? undefined,
+      date: r.date_filed,
+      title: (short && short.length < 90 ? short : text.split(/[.;\n]/)[0]).slice(0, 90),
+      description,
+      url: doc ? `${BASE}${doc}` : `${BASE}/docket/${docketId}/`,
+      kind: classifyEntry(text),
+    });
+  }
+  return out;
 }
 
 /**
@@ -223,6 +400,8 @@ export async function fetchDocketEntries(
   docketId: number,
   limit = 25,
 ): Promise<CourtDocketEntry[]> {
+  const direct = await fetchDocketEntriesDirect(docketId, limit).catch(() => null);
+  if (direct) return direct;
   const hits = await search<SearchDocumentHit>({
     type: 'rd',
     q: `docket_id:${docketId}`,
@@ -250,6 +429,7 @@ export async function fetchDocketEntries(
         (h.entry_number ? `Docket entry #${h.entry_number}` : 'Docket entry'),
       description: description || undefined,
       url: h.absolute_url ? `${BASE}${h.absolute_url}` : `${BASE}/docket/${docketId}/`,
+      kind: classifyEntry(`${short} ${description}`),
     };
     byEntry.set(entryId, candidate);
     if (byEntry.size > limit) break;

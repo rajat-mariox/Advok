@@ -19,6 +19,7 @@ import {
   IconUserCheck,
   IconUsers,
 } from '../components/Icon';
+import NotificationBell from '../components/NotificationBell';
 import { Avatar } from '../components/ui';
 import { authFetch, logout } from '../utils/auth';
 import { useRealtime } from '../utils/realtime';
@@ -132,25 +133,7 @@ export default function AdminLayout() {
             <input className="input" placeholder="Search users, bookings, cases..." style={{ height: 40 }} />
           </div>
           <div style={{ marginLeft: 'auto' }} className="row">
-            <button
-              className="close-circle"
-              aria-label="Notifications"
-              style={{ position: 'relative', background: 'var(--fill-grey)' }}
-            >
-              <IconBell />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: 6,
-                  right: 7,
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: 'var(--dark-1a)',
-                  border: '1.4px solid var(--white)',
-                }}
-              />
-            </button>
+            <NotificationBell />
           </div>
           <div className="row" style={{ gap: 10 }}>
             <Avatar name="Admin User" size={34} />

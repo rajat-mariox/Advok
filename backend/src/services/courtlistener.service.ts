@@ -122,48 +122,77 @@ export interface OpinionContent {
  * Loads the cluster syllabus and the lead opinion's plain text. Needs a
  * token; returns null when none is configured so callers can degrade.
  */
+interface OpinionRow {
+  id?: number;
+  type?: string;
+  ordering_key?: number | null;
+  plain_text?: string;
+  html_with_citations?: string;
+  html?: string;
+  html_lawbox?: string;
+  html_columbia?: string;
+  xml_harvard?: string;
+  html_anon_2020?: string;
+}
+
+/** GET with one polite retry when CourtListener rate-limits (429). */
+async function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, { headers: headers(), signal: AbortSignal.timeout(timeoutMs) });
+    if (res.ok) return (await res.json()) as T;
+    if (res.status === 429 && attempt === 0) {
+      const wait = Math.min(Number(res.headers.get('retry-after')) || 5, 30);
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      continue;
+    }
+    return null;
+  }
+  return null;
+}
+
+function opinionText(op: OpinionRow): string {
+  const html =
+    op.html_with_citations || op.html || op.html_lawbox || op.html_columbia || op.html_anon_2020 || op.xml_harvard || '';
+  return (op.plain_text?.trim() || stripHtml(html)).slice(0, 400_000);
+}
+
+/**
+ * Syllabus + the text of the case's lead (majority) opinion. A cluster can
+ * hold several opinions (majority, concurrences, dissents); the lead one is
+ * ordering_key 1 / a "combined" or "lead" type — never just the first URL.
+ */
 export async function fetchOpinionContent(
   clusterId: number,
   opinionId?: number,
 ): Promise<OpinionContent | null> {
   if (!hasCourtListenerToken()) return null;
-  const cluster = (await (
-    await fetch(`${BASE}/clusters/${clusterId}/`, {
-      headers: headers(),
-      signal: AbortSignal.timeout(15_000),
-    })
-  ).json()) as { syllabus?: string; sub_opinions?: string[] };
+  const cluster = await getJson<{ syllabus?: string; sub_opinions?: string[] }>(
+    `${BASE}/clusters/${clusterId}/`,
+    15_000,
+  );
+  if (!cluster) return null;
+  const syllabus = typeof cluster.syllabus === 'string' ? stripHtml(cluster.syllabus) : '';
 
-  // Prefer the opinion id from search; else the first sub-opinion URL.
-  let id = opinionId;
-  if (!id && Array.isArray(cluster.sub_opinions) && cluster.sub_opinions.length > 0) {
-    const m = /\/opinions\/(\d+)\//.exec(cluster.sub_opinions[0]);
-    if (m) id = Number(m[1]);
+  const ids: number[] = [];
+  if (opinionId) ids.push(opinionId);
+  for (const u of cluster.sub_opinions ?? []) {
+    const m = /\/opinions\/(\d+)\//.exec(u);
+    if (m && !ids.includes(Number(m[1]))) ids.push(Number(m[1]));
   }
-  let text = '';
-  if (id) {
-    const res = await fetch(`${BASE}/opinions/${id}/`, {
-      headers: headers(),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (res.ok) {
-      const op = (await res.json()) as {
-        plain_text?: string;
-        html_with_citations?: string;
-        html?: string;
-        html_lawbox?: string;
-        html_columbia?: string;
-        xml_harvard?: string;
-      };
-      const html =
-        op.html_with_citations || op.html || op.html_lawbox || op.html_columbia || op.xml_harvard || '';
-      text = (op.plain_text?.trim() || stripHtml(html)).slice(0, 400_000);
-    }
+
+  let best: { text: string; score: number } | null = null;
+  for (const id of ids.slice(0, 6)) {
+    const op = await getJson<OpinionRow>(`${BASE}/opinions/${id}/`, 20_000);
+    if (!op) continue;
+    const text = opinionText(op);
+    if (!text) continue;
+    const type = op.type ?? '';
+    const isLead = op.ordering_key === 1 || type.startsWith('010') || type.startsWith('020');
+    const score = (isLead ? 1_000_000 : 0) + text.length;
+    if (!best || score > best.score) best = { text, score };
+    if (isLead) break; // the majority opinion is what students read
   }
-  return {
-    syllabus: typeof cluster.syllabus === 'string' ? stripHtml(cluster.syllabus) : '',
-    text,
-  };
+  return { syllabus, text: best?.text ?? '' };
 }
 
 /** ~230 words per minute, minimum 3 minutes so short syllabi still read sensibly. */

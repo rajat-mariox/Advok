@@ -4,6 +4,7 @@ import type { DbShape, LawStudentProfile, LegalQueryRecord, LegalQueryStatus } f
 import { createId, getDb, saveDb } from '../services/db.service';
 import { pushNotification } from '../services/notify.service';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
+import { pushAdminNotification } from '../services/admin-notify.service';
 
 const MAX_QUESTION = 500;
 const MAX_RESPONSE = 4000;
@@ -64,6 +65,7 @@ export function createQuery(req: AuthedRequest, res: Response) {
     updatedAt: now,
   };
   queries(db).push(record);
+  pushAdminNotification(db, 'legal_query', 'New legal query', `${studentDisplay(db, me.id).studentName} · ${category}: ${question.length > 100 ? `${question.slice(0, 97)}…` : question}`, '/legal-queries');
   saveDb();
   publishToAdmins('queries', { queryId: record.id, status: record.status });
   publishToUser(me.id, 'queries', { queryId: record.id });

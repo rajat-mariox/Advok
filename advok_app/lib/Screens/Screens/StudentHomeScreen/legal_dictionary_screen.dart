@@ -85,20 +85,20 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
   final TextEditingController _search = TextEditingController();
   Timer? _debounce;
 
-  List<String> _letters = const [];
-  String? _letter;
   List<LegalTermSummary> _terms = const [];
   int _total = 0;
-  bool _loading = true;
+  bool _loading = false;
   bool _loadingMore = false;
   String _error = '';
 
   @override
   void initState() {
     super.initState();
-    _loadLetters();
-    _load();
+    // Nothing is listed until the student searches, so the screen opens
+    // instantly instead of pulling the dictionary up front.
   }
+
+  bool get _hasQuery => _search.text.trim().isNotEmpty;
 
   @override
   void dispose() {
@@ -107,17 +107,16 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
     super.dispose();
   }
 
-  Future<void> _loadLetters() async {
-    try {
-      final letters = await ApiService.fetchDictionaryLetters();
-      if (!mounted) return;
-      setState(() => _letters = letters);
-    } on ApiException {
-      // The A–Z strip is a convenience; search still works without it.
-    }
-  }
-
   Future<void> _load({bool more = false}) async {
+    if (!_hasQuery) {
+      setState(() {
+        _terms = const [];
+        _total = 0;
+        _loading = false;
+        _error = '';
+      });
+      return;
+    }
     if (more && (_loadingMore || _terms.length >= _total)) return;
     setState(() {
       if (more) {
@@ -130,7 +129,6 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
     try {
       final result = await ApiService.searchDictionary(
         _search.text.trim(),
-        letter: _letter,
         limit: _pageSize,
         offset: more ? _terms.length : 0,
       );
@@ -160,20 +158,8 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      // A typed query searches the whole dictionary, not one letter.
-      if (_search.text.trim().isNotEmpty && _letter != null) {
-        setState(() => _letter = null);
-      }
       _load();
     });
-  }
-
-  void _pickLetter(String? letter) {
-    setState(() {
-      _letter = _letter == letter ? null : letter;
-      _search.clear();
-    });
-    _load();
   }
 
   void _openTerm({String? slug, String? term}) {
@@ -198,7 +184,6 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
             children: [
               _buildHeader(),
               _buildSearchField(),
-              if (_letters.isNotEmpty) _buildLetterStrip(),
               Expanded(child: _buildBody()),
             ],
           ),
@@ -290,45 +275,6 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
     );
   }
 
-  Widget _buildLetterStrip() {
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: _letters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (_, i) {
-          final letter = _letters[i];
-          final selected = _letter == letter;
-          return InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () => _pickLetter(letter),
-            child: Container(
-              width: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? AppColors.textPrimary : AppColors.fillGrey,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: selected ? AppColors.textPrimary : AppColors.borderGrey,
-                ),
-              ),
-              child: Text(
-                letter,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? AppColors.white : AppColors.textPrimary,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildBody() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
@@ -342,13 +288,19 @@ class _LegalDictionaryScreenState extends State<LegalDictionaryScreen> {
       );
     }
     final query = _search.text.trim();
+    if (!_hasQuery) {
+      return const _Message(
+        icon: Icons.search,
+        title: 'Search the Legal Dictionary',
+        message: 'Type a legal term, e.g. "habeas corpus", "tort" or "mens rea". '
+            'Every term comes with a plain-English explanation.',
+      );
+    }
     if (_terms.isEmpty) {
       return _Message(
         icon: Icons.menu_book_outlined,
         title: query.isEmpty ? 'No terms here yet' : 'No entry for "$query"',
-        message: query.isEmpty
-            ? 'Pick a letter or search for a term.'
-            : 'Ask ADVOK AI to explain it in plain English.',
+        message: 'Ask ADVOK AI to explain it in plain English.',
         action: query.isEmpty
             ? null
             : ('Explain "$query" with ADVOK AI', () => _openTerm(term: query)),

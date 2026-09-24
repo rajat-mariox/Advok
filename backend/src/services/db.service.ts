@@ -43,6 +43,7 @@ const COLLECTIONS = [
   { name: 'caseStudies', field: 'caseStudies', key: 'id' },
   { name: 'legalTerms', field: 'legalTerms', key: 'slug' },
   { name: 'legalQueries', field: 'legalQueries', key: 'id' },
+  { name: 'adminNotifications', field: 'adminNotifications', key: 'id' },
 ] as const;
 
 function loadFromFile(): DbShape {

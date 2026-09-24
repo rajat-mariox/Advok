@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'Routes/app_routes.dart';
+import 'Services/push_service.dart';
 import 'Services/session_provider.dart';
 import 'Utils/AppColors/app_colors.dart';
 
@@ -18,6 +19,8 @@ class AdvokApp extends StatelessWidget {
       create: (_) => SessionProvider(),
       child: MaterialApp(
         title: 'Advok',
+        navigatorKey: appNavigatorKey,
+        scaffoldMessengerKey: appMessengerKey,
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           scaffoldBackgroundColor: AppColors.white,

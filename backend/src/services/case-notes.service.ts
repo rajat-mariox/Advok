@@ -3,7 +3,7 @@
 // Generated once per case and cached on the record; the admin can edit or
 // regenerate them.
 import type { CaseNotes, CaseStudyRecord } from '../models';
-import { GROQ_MODEL } from '../config';
+import { AI_MODEL } from '../config';
 import { completeJson, isAiConnected } from './ai.service';
 
 const SYSTEM = `You are a law-school teaching assistant inside the ADVOK app.
@@ -75,7 +75,7 @@ export async function generateCaseNotes(record: CaseStudyRecord): Promise<CaseNo
     significance: s(raw.significance),
     keyTerms,
     generatedAt: new Date().toISOString(),
-    model: GROQ_MODEL,
+    model: AI_MODEL,
     edited: false,
   };
   if (!notes.facts && !notes.holding && !notes.reasoning) {

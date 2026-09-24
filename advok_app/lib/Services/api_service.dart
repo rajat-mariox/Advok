@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Utils/CountryData/country_catalog.dart';
+import 'push_service.dart';
 import 'realtime_service.dart';
 
 /// Optional override: flutter run --dart-define=ADVOK_API_URL=http://...:4000/api
@@ -11,7 +12,7 @@ const String _envApiUrl = String.fromEnvironment('ADVOK_API_URL');
 
 /// LAN IP of the computer running the backend. Phone/emulator must be on the
 /// same WiFi. If the IP changes, update this (check with `ipconfig`).
-const String _devMachineLanIp = '192.168.1.34';
+const String _devMachineLanIp = '192.168.1.35';
 const int _backendPort = 4000;
 
 /// Backend URL (LAN only — no localhost / 10.0.2.2 fallbacks).
@@ -165,6 +166,8 @@ class Session {
 
   static void clear() {
     Realtime.instance.disconnect();
+    // Stop pushes to this device; the call captures the auth token first.
+    PushService.instance.unregister();
     _token = null;
     _user = null;
     _persist();
@@ -220,7 +223,10 @@ class ApiService {
     Map<String, dynamic>? body,
   }) async {
     final uri = Uri.parse('${await _baseUrl()}$path');
-    if (Session.token != null) Realtime.instance.ensureConnected();
+    if (Session.token != null) {
+      Realtime.instance.ensureConnected();
+      PushService.instance.ensureRegistered();
+    }
     final headers = {
       'Content-Type': 'application/json',
       if (Session.token != null) 'Authorization': 'Bearer ${Session.token}',
@@ -288,6 +294,40 @@ class ApiService {
     Session.token = data['token'] as String?;
     Session.user = data['user'] as Map<String, dynamic>?;
     _syncCountry();
+  }
+
+  /// Registers this device's FCM token for push notifications.
+  static Future<void> registerPushToken(String token, String platform) async {
+    await _request(
+      'POST',
+      '/profile/push-token',
+      body: {'token': token, 'platform': platform},
+    );
+  }
+
+  /// Removes this device's FCM token (logout). Sent with the auth token
+  /// captured before the session is cleared.
+  static Future<void> unregisterPushToken(String token) async {
+    final auth = Session.token;
+    if (auth == null) return;
+    final uri = Uri.parse('${await _baseUrl()}/profile/push-token');
+    await http
+        .delete(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $auth',
+          },
+          body: jsonEncode({'token': token}),
+        )
+        .timeout(const Duration(seconds: 8));
+  }
+
+  /// Public sign-in settings from the backend (Google client IDs live only
+  /// in backend/.env): `{ google: {enabled, webClientId, iosClientId},
+  /// apple: {enabled} }`.
+  static Future<Map<String, dynamic>> fetchAuthConfig() async {
+    return _request('GET', '/auth/config');
   }
 
   /// Logs in with a Google ID token (from Google Sign-In). The backend
@@ -729,10 +769,43 @@ class ApiService {
   /// Court-records search for the Add Case flow (CourtListener / PACER
   /// dockets). `available` is false when the provider could not be reached —
   /// the app then falls back to manual entry.
-  static Future<Map<String, dynamic>> docketLookup(String caseNumber) async {
+  static Future<Map<String, dynamic>> docketLookup(
+    String caseNumber, {
+    String? state,
+    String? courtId,
+  }) async {
+    final params = <String, String>{
+      'caseNumber': caseNumber,
+      if (state != null && state.isNotEmpty) 'state': state,
+      if (courtId != null && courtId.isNotEmpty) 'court': courtId,
+    };
+    final qs = params.entries
+        .map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    return _request('GET', '/cases/docket-lookup?$qs');
+  }
+
+  /// Federal district + bankruptcy courts of a US state, for narrowing a
+  /// docket search: `[{ id, name, short, state, kind }]`.
+  static Future<List<Map<String, dynamic>>> fetchCourts({String? state}) async {
+    final qs = state == null || state.isEmpty
+        ? ''
+        : '?state=${Uri.encodeQueryComponent(state)}';
+    final data = await _request('GET', '/cases/courts$qs');
+    final list = data['courts'] as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Links an existing case to a CourtListener docket and pulls its records
+  /// right away. Returns `{case, sync}`.
+  static Future<Map<String, dynamic>> linkCaseToDocket(
+    String caseId,
+    int courtDocketId,
+  ) async {
     return _request(
-      'GET',
-      '/cases/docket-lookup?caseNumber=${Uri.encodeQueryComponent(caseNumber)}',
+      'POST',
+      '/cases/$caseId/link',
+      body: {'courtDocketId': courtDocketId},
     );
   }
 

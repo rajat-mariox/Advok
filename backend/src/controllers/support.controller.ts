@@ -14,6 +14,7 @@ import { SUPPORT_CATEGORIES } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { pushNotification } from '../services/notify.service';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
+import { pushAdminNotification } from '../services/admin-notify.service';
 
 const STATUSES: SupportTicketStatus[] = ['open', 'in_progress', 'resolved'];
 const MAX_TEXT = 4000;
@@ -102,6 +103,7 @@ export function createTicket(req: AuthedRequest, res: Response) {
     adminUnread: 1,
   };
   tickets(db).push(ticket);
+  pushAdminNotification(db, 'support_ticket', 'New support ticket', `${ticket.subject} (${ticket.category})`, '/support');
   saveDb();
   publishToUser(ticket.userId, 'support', { ticketId: ticket.id, status: ticket.status });
   publishToAdmins('support', { ticketId: ticket.id, status: ticket.status });
@@ -148,6 +150,7 @@ export function replyToMyTicket(req: AuthedRequest, res: Response) {
   ticket.replies.push({ id: createId(), fromAdmin: false, text, createdAt: now });
   ticket.updatedAt = now;
   ticket.adminUnread += 1;
+  pushAdminNotification(db, 'support_reply', 'Reply on a support ticket', `${ticket.subject}: ${text.length > 100 ? `${text.slice(0, 97)}…` : text}`, '/support');
   if (ticket.status === 'resolved') {
     ticket.status = 'open';
     delete ticket.resolvedAt;

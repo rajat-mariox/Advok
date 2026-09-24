@@ -7,6 +7,7 @@ const router = Router();
 router.post('/admin/login', auth.adminLogin);
 router.post('/send-otp', auth.sendOtp);
 router.post('/verify-otp', auth.verifyOtp);
+router.get('/config', auth.authConfig);
 router.post('/google', auth.googleLogin);
 router.post('/apple', auth.appleLogin);
 router.post('/select-role', requireAuth, auth.selectRole);
