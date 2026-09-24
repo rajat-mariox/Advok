@@ -4,6 +4,7 @@ import * as ai from '../controllers/ai.controller';
 import * as dictionary from '../controllers/dictionary.controller';
 import * as learning from '../controllers/learning.controller';
 import * as news from '../controllers/news.controller';
+import * as connections from '../controllers/connections.controller';
 import * as queries from '../controllers/query.controller';
 import * as settings from '../controllers/settings.controller';
 import * as support from '../controllers/support.controller';
@@ -25,6 +26,9 @@ router.post('/users/:id/suspend', admin.suspendUser);
 router.post('/users/:id/unsuspend', admin.unsuspendUser);
 router.patch('/users/:id/firm-fee', admin.setFirmFee);
 
+router.get('/notifications', admin.listAdminNotifications);
+router.post('/notifications/read', admin.markAdminNotificationsRead);
+
 router.get('/bookings', admin.listBookings);
 router.get('/cases', admin.listCases);
 router.delete('/cases/:id', admin.deleteCase);
@@ -35,6 +39,9 @@ router.put('/pricing', settings.updatePricing);
 
 router.get('/support-contact', settings.getSupportContact);
 router.put('/support-contact', settings.updateSupportContact);
+
+router.get('/mentorships', connections.adminList);
+router.get('/mentorships/:studentId/:attorneyId/messages', connections.adminThread);
 
 router.get('/queries', queries.adminList);
 router.post('/queries/:id/answer', queries.adminAnswer);

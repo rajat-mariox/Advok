@@ -7,7 +7,6 @@ import '../../../Services/api_service.dart';
 import '../../../Services/realtime_service.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
-import '../FindMentorsScreen/find_mentors_screen.dart';
 
 const int _maxQuestionLength = 500;
 
@@ -548,8 +547,6 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen>
                 _buildFieldLabel('Your Question'),
                 const SizedBox(height: 8),
                 _buildQuestionField(),
-                const SizedBox(height: 20),
-                _buildMentorCard(),
               ],
             ),
           ),
@@ -774,97 +771,6 @@ class _LegalQueriesScreenState extends State<LegalQueriesScreen>
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildMentorCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.fillGrey,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderGrey),
-      ),
-      child: Row(
-        children: [
-          SvgPicture.asset(
-            'assets/icons/ic_user.svg',
-            width: 20,
-            height: 20,
-            colorFilter: const ColorFilter.mode(
-              AppColors.textPrimary,
-              BlendMode.srcIn,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Connect with Mentor',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 20 / 14,
-                    letterSpacing: -0.15,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Request guidance from a specific mentor',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 16 / 12,
-                    color: AppColors.textGrey555,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (routeContext) => Scaffold(
-                    backgroundColor: AppColors.white,
-                    body: SafeArea(
-                      child: FindMentorsScreen(
-                        onBack: () => Navigator.of(routeContext).pop(),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-            child: Container(
-              height: 33,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.textPrimary, AppColors.gradientDarkEnd],
-                ),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Center(
-                child: Text(
-                  'Browse',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    height: 16 / 12,
-                    color: AppColors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

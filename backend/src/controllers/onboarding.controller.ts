@@ -5,7 +5,8 @@ import type {
   LawFirmProfile,
   LawStudentProfile,
 } from '../models';
-import { saveDb } from '../services/db.service';
+import { getDb, saveDb } from '../services/db.service';
+import { pushAdminNotification } from '../services/admin-notify.service';
 import { storePhoto } from '../services/storage.service';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
 import {
@@ -20,6 +21,10 @@ function submit(req: AuthedRequest, profile: AdvocateProfile | LawStudentProfile
   user.status = 'pending_approval';
   user.onboardedAt = new Date().toISOString();
   user.rejectionReason = undefined;
+  const p = profile as { fullName?: string; firmName?: string; professional?: { fullName?: string } };
+  const who = p.professional?.fullName || p.fullName || p.firmName || user.phone || 'Someone';
+  const roleLabel = user.role === 'law_firm' ? 'law firm' : user.role === 'law_student' ? 'law student' : 'attorney';
+  pushAdminNotification(getDb(), 'registration', `New ${roleLabel} registration`, `${who} submitted their details for review.`, '/approvals');
   saveDb();
   publishToAdmins('registrations', { userId: user.id, role: user.role });
   publishToAdmins('users', { userId: user.id });

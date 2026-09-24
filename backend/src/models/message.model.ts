@@ -24,7 +24,8 @@ export type NotificationType =
   | 'booking_accepted'
   | 'booking_declined'
   | 'support_reply'
-  | 'query_answered';
+  | 'query_answered'
+  | 'account_update';
 
 /** An in-app notification shown on the user's Notifications screen. */
 export interface AppNotification {
@@ -37,6 +38,26 @@ export interface AppNotification {
   bookingId?: string;
   ticketId?: string;
   queryId?: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+export type AdminNotificationType =
+  | 'registration'
+  | 'support_ticket'
+  | 'support_reply'
+  | 'legal_query'
+  | 'booking'
+  | 'mentorship';
+
+/** A notification for the admin panel's bell (shared by all admins). */
+export interface AdminNotification {
+  id: string;
+  type: AdminNotificationType;
+  title: string;
+  body: string;
+  /** Admin panel route to open, e.g. '/approvals'. */
+  link: string;
   createdAt: string;
   readAt?: string;
 }

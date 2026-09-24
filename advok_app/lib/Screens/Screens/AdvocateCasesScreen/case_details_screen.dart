@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../Services/api_service.dart';
 import '../../../Services/realtime_service.dart';
@@ -27,7 +26,8 @@ class CaseDetailsScreen extends StatefulWidget {
   State<CaseDetailsScreen> createState() => _CaseDetailsScreenState();
 }
 
-class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefresh {
+class _CaseDetailsScreenState extends State<CaseDetailsScreen>
+    with RealtimeRefresh {
   late AdvocateCase _caseData = widget.caseData;
 
   @override
@@ -39,60 +39,8 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
       if (id == null || id == _caseData.id) _refresh();
     });
   }
+
   bool _uploadingDocument = false;
-  bool _syncing = false;
-
-  /// Attorney pulls the latest court records for a linked case.
-  Future<void> _syncWithCourt() async {
-    if (_syncing) return;
-    setState(() => _syncing = true);
-    try {
-      final data = await ApiService.syncCaseWithCourt(_caseData.id);
-      if (!mounted) return;
-      final sync = data['sync'] as Map<String, dynamic>? ?? const {};
-      setState(
-        () => _caseData = AdvocateCase.fromApi(
-          data['case'] as Map<String, dynamic>,
-        ),
-      );
-      final error = sync['error'] as String?;
-      final newEvents = (sync['newEvents'] as num?)?.toInt() ?? 0;
-      final statusChanged = sync['statusChanged'] == true;
-      final String message;
-      if (error != null && error.isNotEmpty) {
-        message = 'Court records sync failed: $error';
-      } else if (newEvents == 0 && !statusChanged) {
-        message = 'Court records are up to date.';
-      } else {
-        message = [
-          if (newEvents > 0)
-            '$newEvents new court record${newEvents == 1 ? '' : 's'} added',
-          if (statusChanged) 'case closed by the court',
-        ].join(' · ');
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    } finally {
-      if (mounted) setState(() => _syncing = false);
-    }
-  }
-
-  Future<void> _openDocket(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the docket page.')),
-      );
-    }
-  }
 
   Future<void> _refresh() async {
     try {
@@ -122,9 +70,9 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _uploadingDocument = false);
     }
@@ -135,14 +83,14 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
       final bytes = await documentBytes(doc.url);
       final path = await saveDocumentToDevice(name: doc.name, bytes: bytes);
       if (!mounted || path == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${doc.name} saved.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${doc.name} saved.')));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -172,9 +120,9 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
       setState(() => _caseData = AdvocateCase.fromApi(json));
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -214,10 +162,6 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
                       _buildSummaryCard(),
                       const SizedBox(height: 16),
                       _buildInfoCard(),
-                      if (_caseData.courtRecord != null) ...[
-                        const SizedBox(height: 16),
-                        _buildCourtRecordCard(_caseData.courtRecord!),
-                      ],
                       const SizedBox(height: 16),
                       const _SectionLabel('Case Timeline'),
                       const SizedBox(height: 12),
@@ -273,19 +217,22 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
                           title: 'No documents yet',
                           message: widget.isAttorney
                               ? 'Tap "+ Add Document" to attach case files '
-                                  '(PDF, images, Word).'
+                                    '(PDF, images, Word).'
                               : 'Files your attorney adds will appear here.',
                         )
                       else
-                        for (int i = 0; i < _caseData.documents.length; i++) ...[
+                        for (
+                          int i = 0;
+                          i < _caseData.documents.length;
+                          i++
+                        ) ...[
                           if (i > 0) const SizedBox(height: 8),
                           _DocumentRow(
                             document: _caseData.documents[i],
                             onDownload: () =>
                                 _downloadDocument(_caseData.documents[i]),
                             onRemove: widget.isAttorney
-                                ? () =>
-                                    _removeDocument(_caseData.documents[i])
+                                ? () => _removeDocument(_caseData.documents[i])
                                 : null,
                           ),
                         ],
@@ -471,207 +418,19 @@ class _CaseDetailsScreenState extends State<CaseDetailsScreen> with RealtimeRefr
     );
   }
 
-  /// Court-records link: where the status and timeline sync from, when it
-  /// last ran, and (for the attorney) a way to pull updates right now.
-  Widget _buildCourtRecordCard(CourtRecordInfo record) {
-    final synced = record.lastSyncedAt == null
-        ? 'Not synced yet'
-        : 'Last synced ${_formatSyncTime(record.lastSyncedAt!)}';
-    final error = record.lastSyncError;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.fillGrey,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderGrey),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.link, size: 16, color: AppColors.textPrimary),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text(
-                  'Court Records',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.08,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              if (record.dateTerminated != null)
-                const CaseBadge(
-                  label: 'Terminated',
-                  color: Color(0xFF555555),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            [
-              'CourtListener · PACER docket #${record.docketId}',
-              if (record.courtName != null && record.courtName!.isNotEmpty)
-                record.courtName!,
-              if (record.dateTerminated != null)
-                'Closed by the court on '
-                    '${formatCaseDay(record.dateTerminated!)}',
-            ].join('\n'),
-            style: const TextStyle(
-              fontSize: 12,
-              height: 1.5,
-              color: AppColors.textGrey555,
-            ),
-          ),
-          for (final row in _courtRows(record)) ...[
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    row.$1,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.5,
-                      color: AppColors.textGrey555,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    row.$2,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                      letterSpacing: -0.08,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 4),
-          Text(
-            error != null && error.isNotEmpty
-                ? '$synced · last attempt failed: $error'
-                : synced,
-            style: TextStyle(
-              fontSize: 11.5,
-              height: 1.5,
-              color: error != null && error.isNotEmpty
-                  ? const Color(0xFFB3261E)
-                  : AppColors.textGrey,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      record.url.isEmpty ? null : () => _openDocket(record.url),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.borderGrey),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.open_in_new, size: 14),
-                  label: const Text(
-                    'View Docket',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-              if (widget.isAttorney) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _syncing ? null : _syncWithCourt,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.white,
-                      backgroundColor: AppColors.textPrimary,
-                      side: BorderSide.none,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: _syncing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.white,
-                            ),
-                          )
-                        : const Icon(Icons.sync, size: 14),
-                    label: Text(
-                      _syncing ? 'Syncing…' : 'Sync Now',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Docket header fields worth a row of their own on the court card.
-  List<(String, String)> _courtRows(CourtRecordInfo record) {
-    return [
-      if (record.natureOfSuit != null) ('Nature of suit', record.natureOfSuit!),
-      if (record.cause != null) ('Cause', record.cause!),
-      if (record.jurisdictionType != null)
-        ('Jurisdiction', record.jurisdictionType!),
-      if (record.parties.isNotEmpty)
-        (
-          'Parties',
-          record.parties.length > 6
-              ? '${record.parties.take(6).join(', ')} '
-                  '+${record.parties.length - 6} more'
-              : record.parties.join(', '),
-        ),
-    ];
-  }
-
-  /// 'Sep 11, 2026 at 11:02' in the device's local time.
-  String _formatSyncTime(String iso) {
-    final parsed = DateTime.tryParse(iso)?.toLocal();
-    if (parsed == null) return iso;
-    final hh = parsed.hour.toString().padLeft(2, '0');
-    final mm = parsed.minute.toString().padLeft(2, '0');
-    return '${formatCaseDay(parsed.toIso8601String())} at $hh:$mm';
-  }
-
   Widget _buildActions(BuildContext context) {
-    final chatName =
-        widget.isAttorney ? _caseData.client : _caseData.advocateName;
+    final chatName = widget.isAttorney
+        ? _caseData.client
+        : _caseData.advocateName;
     final messageButton = Material(
       color: AppColors.progressTrack,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          final peerId =
-              widget.isAttorney ? _caseData.clientId : _caseData.advocateId;
+          final peerId = widget.isAttorney
+              ? _caseData.clientId
+              : _caseData.advocateId;
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => ChatScreen(
@@ -810,175 +569,184 @@ class _AddUpdateSheetState extends State<_AddUpdateSheet> {
         widget.caseData.id,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        status:
-            _status == widget.caseData.status ? null : _status.apiValue,
+        status: _status == widget.caseData.status ? null : _status.apiValue,
         nextHearing: _nextHearing == null
             ? null
             : '${_nextHearing!.year}-'
-                '${_nextHearing!.month.toString().padLeft(2, '0')}-'
-                '${_nextHearing!.day.toString().padLeft(2, '0')}',
+                  '${_nextHearing!.month.toString().padLeft(2, '0')}-'
+                  '${_nextHearing!.day.toString().padLeft(2, '0')}',
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+    // Scrollable so the form never overflows once the keyboard takes the
+    // bottom of the screen; the sheet itself is capped at 90% height.
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Add Case Update',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.23,
-              color: AppColors.textPrimary,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add Case Update',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.23,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'The client sees this on their case timeline.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
-          ),
-          const SizedBox(height: 16),
-          _buildInput(
-            controller: _titleController,
-            hint: 'Update title (e.g. Motion filed)',
-          ),
-          const SizedBox(height: 10),
-          _buildInput(
-            controller: _descriptionController,
-            hint: 'Details (optional)',
-            maxLines: 3,
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Status',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.08,
-              color: AppColors.textPrimary,
+            const SizedBox(height: 4),
+            const Text(
+              'The client sees this on their case timeline.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final status in CaseStatus.values)
-                ChoiceChip(
-                  label: Text(status.label),
-                  selected: _status == status,
-                  selectedColor: AppColors.textPrimary,
-                  backgroundColor: AppColors.fillGrey,
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: _status == status
-                        ? AppColors.white
-                        : AppColors.textGrey555,
+            const SizedBox(height: 16),
+            _buildInput(
+              controller: _titleController,
+              hint: 'Update title (e.g. Motion filed)',
+            ),
+            const SizedBox(height: 10),
+            _buildInput(
+              controller: _descriptionController,
+              hint: 'Details (optional)',
+              maxLines: 3,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Status',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.08,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final status in CaseStatus.values)
+                  ChoiceChip(
+                    label: Text(status.label),
+                    selected: _status == status,
+                    selectedColor: AppColors.textPrimary,
+                    backgroundColor: AppColors.fillGrey,
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _status == status
+                          ? AppColors.white
+                          : AppColors.textGrey555,
+                    ),
+                    onSelected: (_) => setState(() => _status = status),
                   ),
-                  onSelected: (_) => setState(() => _status = status),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Material(
-            color: AppColors.fillGrey,
-            borderRadius: BorderRadius.circular(12),
-            child: InkWell(
+              ],
+            ),
+            const SizedBox(height: 14),
+            Material(
+              color: AppColors.fillGrey,
               borderRadius: BorderRadius.circular(12),
-              onTap: () async {
-                final now = DateTime.now();
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: now,
-                  firstDate: now,
-                  lastDate: DateTime(now.year + 5),
-                );
-                if (picked != null) setState(() => _nextHearing = picked);
-              },
-              child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.borderGrey),
-                ),
-                child: Row(
-                  children: [
-                    SvgPicture.asset(
-                      'assets/icons/ic_calendar_dark.svg',
-                      width: 14,
-                      height: 14,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _nextHearing == null
-                          ? 'Set next court event (optional)'
-                          : 'Next court event: ${_nextHearing!.month}/'
-                              '${_nextHearing!.day}/${_nextHearing!.year}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        letterSpacing: -0.08,
-                        color: _nextHearing == null
-                            ? AppColors.textGrey
-                            : AppColors.textPrimary,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: now,
+                    firstDate: now,
+                    lastDate: DateTime(now.year + 5),
+                  );
+                  if (picked != null) setState(() => _nextHearing = picked);
+                },
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.borderGrey),
+                  ),
+                  child: Row(
+                    children: [
+                      SvgPicture.asset(
+                        'assets/icons/ic_calendar_dark.svg',
+                        width: 14,
+                        height: 14,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _nextHearing == null
+                              ? 'Set next court event (optional)'
+                              : 'Next court event: ${_nextHearing!.month}/'
+                                    '${_nextHearing!.day}/${_nextHearing!.year}',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            letterSpacing: -0.08,
+                            color: _nextHearing == null
+                                ? AppColors.textGrey
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: _canSave && !_saving
-                      ? [AppColors.textPrimary, AppColors.gradientDarkEnd]
-                      : [AppColors.progressTrack, AppColors.progressTrack],
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: _canSave && !_saving
+                        ? [AppColors.textPrimary, AppColors.gradientDarkEnd]
+                        : [AppColors.progressTrack, AppColors.progressTrack],
+                  ),
                   borderRadius: BorderRadius.circular(16),
-                  onTap: _canSave && !_saving ? _save : null,
-                  child: SizedBox(
-                    height: 50,
-                    child: Center(
-                      child: Text(
-                        _saving ? 'Saving…' : 'Post Update',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.15,
-                          color: _canSave && !_saving
-                              ? AppColors.white
-                              : AppColors.textGrey,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _canSave && !_saving ? _save : null,
+                    child: SizedBox(
+                      height: 50,
+                      child: Center(
+                        child: Text(
+                          _saving ? 'Saving…' : 'Post Update',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.15,
+                            color: _canSave && !_saving
+                                ? AppColors.white
+                                : AppColors.textGrey,
+                          ),
                         ),
                       ),
                     ),
@@ -986,8 +754,8 @@ class _AddUpdateSheetState extends State<_AddUpdateSheet> {
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1193,11 +961,7 @@ class _TimelineRow extends StatelessWidget {
 }
 
 class _DocumentRow extends StatelessWidget {
-  const _DocumentRow({
-    required this.document,
-    this.onDownload,
-    this.onRemove,
-  });
+  const _DocumentRow({required this.document, this.onDownload, this.onRemove});
 
   final CaseDocumentInfo document;
 
@@ -1228,8 +992,11 @@ class _DocumentRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              SvgPicture.asset('assets/icons/ic_file.svg',
-                  width: 16, height: 16),
+              SvgPicture.asset(
+                'assets/icons/ic_file.svg',
+                width: 16,
+                height: 16,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(

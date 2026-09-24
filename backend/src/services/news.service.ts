@@ -37,7 +37,7 @@ interface FeedDef {
   splitBills?: boolean;
 }
 
-const FEEDS: FeedDef[] = [
+const DEFAULT_FEEDS: FeedDef[] = [
   { key: 'scotusblog', name: 'SCOTUSblog', url: 'https://www.scotusblog.com/feed/', defaultTag: 'Supreme Court' },
   { key: 'abajournal', name: 'ABA Journal', url: 'https://www.abajournal.com/news/rss', defaultTag: 'Legal News' },
   {
@@ -48,6 +48,36 @@ const FEEDS: FeedDef[] = [
     splitBills: true,
   },
 ];
+
+const VALID_TAGS = ['Supreme Court', 'Federal Courts', 'Legislation', 'Bar Exam', 'Legal News'] as const;
+
+/**
+ * Feeds come from NEWS_FEEDS in backend/.env when set, so the client can
+ * add or remove sources without a code change. Format, one feed per `;`:
+ *   key|Display name|https://feed-url|Default tag
+ * Tag must be one of: Supreme Court, Federal Courts, Legislation, Bar Exam,
+ * Legal News (anything else falls back to Legal News). A feed whose key is
+ * "congress" gets Congress.gov's bill splitting.
+ */
+function loadFeeds(): FeedDef[] {
+  const raw = (process.env.NEWS_FEEDS ?? '').trim();
+  if (!raw) return DEFAULT_FEEDS;
+  const feeds: FeedDef[] = [];
+  for (const entry of raw.split(';')) {
+    const [key, name, url, tag] = entry.split('|').map((x) => (x ?? '').trim());
+    if (!key || !url || !/^https?:\/\//i.test(url)) continue;
+    const defaultTag = (VALID_TAGS as readonly string[]).includes(tag) ? (tag as NewsTag) : 'Legal News';
+    feeds.push({ key, name: name || key, url, defaultTag, splitBills: key === 'congress' });
+  }
+  if (feeds.length === 0) {
+    console.warn('NEWS_FEEDS is set but no valid entries were found; using the default feeds');
+    return DEFAULT_FEEDS;
+  }
+  console.log(`Legal news: ${feeds.length} feed(s) from NEWS_FEEDS`);
+  return feeds;
+}
+
+const FEEDS: FeedDef[] = loadFeeds();
 
 export const NEWS_TAGS: NewsTag[] = ['Supreme Court', 'Federal Courts', 'Legislation', 'Bar Exam', 'Legal News'];
 

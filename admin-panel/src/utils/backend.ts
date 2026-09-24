@@ -337,6 +337,8 @@ export interface AiStatus {
   connected: boolean;
   provider: string;
   model: string;
+  /** Why the AI isn't working (invalid key, no credit…), when it isn't. */
+  keyError?: string | null;
 }
 
 /** Whether ADVOK AI is wired to a model on the backend (no secrets returned). */
@@ -607,6 +609,86 @@ export async function refreshCaseStudyText(id: string): Promise<CaseStudyCard> {
 export async function deleteCaseStudy(id: string): Promise<boolean> {
   const res = await authFetch(`/admin/learning/cases/${id}`, { method: 'DELETE' });
   return res.ok;
+}
+
+// ------------------------------------------------ Admin notifications (header bell)
+
+export interface AdminNotification {
+  id: string;
+  type: 'registration' | 'support_ticket' | 'support_reply' | 'legal_query' | 'booking' | 'mentorship';
+  title: string;
+  body: string;
+  link: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+export async function fetchAdminNotifications(): Promise<{ notifications: AdminNotification[]; unread: number }> {
+  const res = await authFetch('/admin/notifications');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? 'Failed to load notifications');
+  return { notifications: data.notifications ?? [], unread: data.unread ?? 0 };
+}
+
+/** No ids → mark everything read. */
+export async function markAdminNotificationsRead(ids?: string[]): Promise<void> {
+  await authFetch('/admin/notifications/read', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) });
+}
+
+// ------------------------------------------------ Mentorships (student ↔ attorney conversations)
+
+export interface StudentAttorneyConnection {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentCollege: string | null;
+  studentYear: string | null;
+  studentPhone: string | null;
+  studentPhoto: string | null;
+  attorneyId: string;
+  attorneyName: string;
+  attorneySpecialty: string;
+  attorneyFirm: string | null;
+  attorneyPhoto: string | null;
+  startedAt: string;
+  lastMessageAt: string;
+  lastMessage: string;
+  lastFrom: 'student' | 'attorney';
+  messageCount: number;
+  fromStudent: number;
+  fromAttorney: number;
+  status: 'active' | 'awaiting_reply';
+}
+
+export interface ConnectionCounts {
+  total: number;
+  active: number;
+  awaitingReply: number;
+  students: number;
+  attorneys: number;
+}
+
+export interface ConnectionMessage {
+  id: string;
+  from: 'student' | 'attorney';
+  text: string;
+  system: boolean;
+  sentAt: string;
+  readAt: string | null;
+}
+
+export async function fetchConnections(): Promise<{ connections: StudentAttorneyConnection[]; counts: ConnectionCounts }> {
+  const res = await authFetch('/admin/mentorships');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? 'Failed to load mentorships');
+  return { connections: data.connections ?? [], counts: data.counts ?? { total: 0, active: 0, awaitingReply: 0, students: 0, attorneys: 0 } };
+}
+
+export async function fetchConnectionThread(studentId: string, attorneyId: string): Promise<ConnectionMessage[]> {
+  const res = await authFetch(`/admin/mentorships/${studentId}/${attorneyId}/messages`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? 'Failed to load the conversation');
+  return data.messages ?? [];
 }
 
 // ------------------------------------------------ Legal Queries (law students)

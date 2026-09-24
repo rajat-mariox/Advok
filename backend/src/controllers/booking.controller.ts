@@ -21,6 +21,7 @@ const CONSULTATION_LABELS: Record<string, string> = {
 };
 import { isBookingDate, isConsultationKind } from '../validators/booking.validator';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
+import { pushAdminNotification } from '../services/admin-notify.service';
 
 function bookings(db: DbShape): Booking[] {
   db.bookings ??= [];
@@ -391,6 +392,7 @@ export function createBooking(req: AuthedRequest, res: Response) {
   );
   // The requested attorney is not told yet — the firm accepts first, then
   // the assignment (and the attorney's notification) happens automatically.
+  pushAdminNotification(db, 'booking', 'New consultation booked', `${bookerLabel} · ${booking.consultationType.replace('_', ' ')} on ${date} at ${time}`, '/bookings');
   saveDb();
   publishToUsers([booking.clientId, booking.advocateId, booking.assignedAttorney?.userId], 'bookings', { bookingId: booking.id, status: booking.status });
   publishToUser(booking.advocateId, 'clients');

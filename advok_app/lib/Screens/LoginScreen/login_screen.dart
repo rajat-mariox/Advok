@@ -60,9 +60,10 @@ class _LoginScreenState extends State<LoginScreen> {
       PostLoginNavigator.navigateAfterLogin(context);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // Replace any earlier message instead of queueing one per tap.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -75,9 +76,10 @@ class _LoginScreenState extends State<LoginScreen> {
       PostLoginNavigator.navigateAfterLogin(context);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // Replace any earlier message instead of queueing one per tap.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -101,9 +103,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // Replace any earlier message instead of queueing one per tap.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _sending = false);
     }

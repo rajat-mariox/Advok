@@ -1,12 +1,13 @@
 import type { Request, Response } from 'express';
 import type { AuthedRequest } from '../middlewares/auth.middleware';
-import { aiStatus, chatCompletion, type ChatMessage } from '../services/ai.service';
+import { aiStatus, aiStatusLive, chatCompletion, type ChatMessage } from '../services/ai.service';
 import type { AiSuggestion } from '../models';
 import { createId, getSettings, saveDb } from '../services/db.service';
 
 /** GET /ai/status — whether ADVOK AI is wired to a model (no secrets). */
-export function status(_req: Request, res: Response) {
-  return res.json(aiStatus());
+export async function status(_req: Request, res: Response) {
+  // Live check: a set-but-invalid key shows as not connected, with the reason.
+  return res.json(await aiStatusLive());
 }
 
 /**

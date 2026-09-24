@@ -1,7 +1,8 @@
-// ADVOK AI — the in-app legal assistant. Backed by Groq's OpenAI-compatible
-// chat completions API. The key lives only in backend/.env (GROQ_API_KEY);
-// the app never talks to Groq directly.
-import { GROQ_API_KEY, GROQ_MODEL } from '../config';
+// ADVOK AI — the in-app legal assistant. Backed by an OpenAI-compatible
+// chat completions API: OpenAI when OPENAI_API_KEY is set, otherwise Groq
+// (see config.ts). Keys live only in backend/.env; the app never talks to
+// the provider directly.
+import { AI_API_KEY, AI_API_URL, AI_MODEL, AI_PROVIDER } from '../config';
 import { DEFAULT_SUPPORT_CONTACT } from '../models';
 import { getSettings } from './db.service';
 
@@ -11,7 +12,6 @@ export interface ChatMessage {
   content: string;
 }
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /** Keeps the assistant on ADVOK + US legal topics only. */
 const SYSTEM_PROMPT = `You are ADVOK AI, the legal information assistant inside the ADVOK app.
@@ -74,14 +74,54 @@ export function stripMarkdown(text: string): string {
 }
 
 export function isAiConnected(): boolean {
-  return GROQ_API_KEY.length > 0;
+  return AI_PROVIDER !== 'none';
+}
+
+/** Result of the last live key check, cached for a few minutes. */
+let keyCheck: { ok: boolean; error?: string; at: number } | null = null;
+const KEY_CHECK_TTL_MS = 5 * 60 * 1000;
+
+/** Human reason for a provider error, e.g. an invalid key or no credit. */
+function explain(status: number, detail: string): string {
+  if (status === 401 || /invalid_api_key|Incorrect API key/i.test(detail)) {
+    return `${AI_PROVIDER === 'openai' ? 'OpenAI' : 'Groq'} rejected the API key (invalid or revoked). Put a new key in backend/.env and restart.`;
+  }
+  if (status === 429 && /insufficient_quota|quota/i.test(detail)) {
+    return 'The AI account has no credit left (insufficient_quota). Add billing credit.';
+  }
+  if (status === 429) return 'Rate limited by the AI provider. Try again shortly.';
+  if (status === 404 || /model/i.test(detail)) return `Model "${AI_MODEL}" is not available for this key.`;
+  return `AI provider error ${status}${detail ? `: ${detail.slice(0, 160)}` : ''}`;
+}
+
+/** Live check that the configured key actually works (cheap, cached). */
+async function checkKey(): Promise<{ ok: boolean; error?: string }> {
+  if (!isAiConnected()) return { ok: false, error: 'No AI key set (OPENAI_API_KEY in backend/.env).' };
+  if (keyCheck && Date.now() - keyCheck.at < KEY_CHECK_TTL_MS) return keyCheck;
+  try {
+    const base = AI_API_URL.replace(/\/chat\/completions$/, '');
+    const res = await fetch(`${base}/models`, {
+      headers: { Authorization: `Bearer ${AI_API_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const detail = res.ok ? '' : await res.text().catch(() => '');
+    keyCheck = res.ok ? { ok: true, at: Date.now() } : { ok: false, error: explain(res.status, detail), at: Date.now() };
+  } catch (err) {
+    keyCheck = { ok: false, error: `Could not reach the AI provider: ${err instanceof Error ? err.message : err}`, at: Date.now() };
+  }
+  return keyCheck;
+}
+
+export async function aiStatusLive() {
+  const check = await checkKey();
+  return { ...aiStatus(), connected: check.ok, keyError: check.error ?? null };
 }
 
 export function aiStatus() {
   return {
     connected: isAiConnected(),
-    provider: 'Groq',
-    model: GROQ_MODEL,
+    provider: AI_PROVIDER === 'openai' ? 'OpenAI' : AI_PROVIDER === 'groq' ? 'Groq' : 'None',
+    model: AI_MODEL,
   };
 }
 
@@ -96,20 +136,20 @@ function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
 
 export async function chatCompletion(history: ChatMessage[]): Promise<string> {
   if (!isAiConnected()) {
-    throw new Error('ADVOK AI is not configured (GROQ_API_KEY missing)');
+    throw new Error('ADVOK AI is not configured (set OPENAI_API_KEY or GROQ_API_KEY)');
   }
   const messages: ChatMessage[] = [
     { role: 'system', content: `${SYSTEM_PROMPT}\n\n${advokFacts()}` },
     ...sanitizeHistory(history),
   ];
-  const res = await fetch(GROQ_URL, {
+  const res = await fetch(AI_API_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${AI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: AI_MODEL,
       messages,
       temperature: 0.3,
       max_tokens: 600,
@@ -119,14 +159,14 @@ export async function chatCompletion(history: ChatMessage[]): Promise<string> {
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(
-      `Groq request failed (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+      (keyCheck = { ok: false, error: explain(res.status, detail), at: Date.now() }).error,
     );
   }
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
   };
   const reply = data.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error('Groq returned an empty reply');
+  if (!reply) throw new Error('AI returned an empty reply');
   return stripMarkdown(reply);
 }
 
@@ -135,21 +175,21 @@ interface CompletionOptions {
   temperature?: number;
 }
 
-async function groqRequest(
+async function aiRequest(
   messages: ChatMessage[],
   opts: CompletionOptions & { json?: boolean } = {},
 ): Promise<string> {
   if (!isAiConnected()) {
-    throw new Error('ADVOK AI is not configured (GROQ_API_KEY missing)');
+    throw new Error('ADVOK AI is not configured (set OPENAI_API_KEY or GROQ_API_KEY)');
   }
-  const res = await fetch(GROQ_URL, {
+  const res = await fetch(AI_API_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${AI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: AI_MODEL,
       messages,
       temperature: opts.temperature ?? 0.3,
       max_tokens: opts.maxTokens ?? 600,
@@ -160,14 +200,14 @@ async function groqRequest(
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(
-      `Groq request failed (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+      (keyCheck = { ok: false, error: explain(res.status, detail), at: Date.now() }).error,
     );
   }
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
   };
   const reply = data.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error('Groq returned an empty reply');
+  if (!reply) throw new Error('AI returned an empty reply');
   return reply;
 }
 
@@ -177,7 +217,7 @@ export async function completeText(
   user: string,
   opts: CompletionOptions = {},
 ): Promise<string> {
-  const reply = await groqRequest(
+  const reply = await aiRequest(
     [
       { role: 'system', content: system },
       { role: 'user', content: user },
@@ -193,7 +233,7 @@ export async function completeJson<T>(
   user: string,
   opts: CompletionOptions = {},
 ): Promise<T> {
-  const reply = await groqRequest(
+  const reply = await aiRequest(
     [
       { role: 'system', content: system },
       { role: 'user', content: user },

@@ -36,6 +36,8 @@ export interface CourtRecordLink {
   dateFiled?: string;
   /** Set once the court has terminated (closed) the docket. */
   dateTerminated?: string;
+  /** Most recent filing date the court recorded (even when the filing itself is not public). */
+  lastFilingDate?: string;
   /** PACER nature of suit, e.g. '410 Anti-Trust'. */
   natureOfSuit?: string;
   /** Statutory cause of action, e.g. '15:1 Antitrust Litigation'. */

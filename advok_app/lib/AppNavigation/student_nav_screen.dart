@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../Screens/Screens/FindMentorsScreen/find_mentors_screen.dart';
+import '../Screens/Screens/AdvocateListScreen/advocate_list_screen.dart';
 import '../Screens/Screens/LegalQueriesScreen/legal_queries_screen.dart';
 import '../Screens/Screens/MessagesScreen/messages_screen.dart';
 import '../Screens/Screens/StudentHomeScreen/student_home_screen.dart';
@@ -47,7 +47,10 @@ class _StudentNavScreenState extends State<StudentNavScreen> {
             index: _index,
             children: [
               StudentHomeScreen(onProfileTap: () => setState(() => _index = 4)),
-              FindMentorsScreen(onBack: () => setState(() => _index = 0)),
+              AdvocateListScreen(
+                title: CountryCatalog.terms.lawyerPlural,
+                onBack: () => setState(() => _index = 0),
+              ),
               MessagesScreen(onBack: () => setState(() => _index = 0)),
               const LegalQueriesScreen(),
               const StudentProfileScreen(),

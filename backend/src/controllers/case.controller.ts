@@ -12,7 +12,7 @@ import type {
   DocumentRequest,
 } from '../models';
 import { syncCaseWithCourt, type CaseSyncResult } from '../services/case-sync.service';
-import { lookupDocket } from '../services/court.service';
+import { courtsForState, lookupDocket, usCourts } from '../services/court.service';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { pushNotification, pushSystemMessage } from '../services/notify.service';
 import { storeFile } from '../services/storage.service';
@@ -209,6 +209,39 @@ export async function createCase(req: AuthedRequest, res: Response) {
 }
 
 /**
+ * POST /cases/:id/link — body { courtDocketId }. Links a case that was
+ * created manually (or with the wrong match) to a CourtListener docket and
+ * pulls its records right away. Re-linking to a different docket drops the
+ * old docket's timeline entries.
+ */
+export async function linkCase(req: AuthedRequest, res: Response) {
+  const me = req.user!;
+  const db = getDb();
+  const record = cases(db).find((c) => c.id === req.params.id);
+  if (!record || record.advocateId !== me.id) {
+    return res.status(404).json({ error: 'Case not found' });
+  }
+  const docketId = Number((req.body as { courtDocketId?: unknown } | undefined)?.courtDocketId);
+  if (!Number.isInteger(docketId) || docketId <= 0) {
+    return res.status(400).json({ error: 'courtDocketId is required' });
+  }
+  if (record.courtRecord && record.courtRecord.docketId !== docketId) {
+    record.timeline = record.timeline.filter((e) => e.source !== 'court_api');
+  }
+  record.courtRecord = {
+    provider: 'courtlistener',
+    docketId,
+    url: `https://www.courtlistener.com/docket/${docketId}/`,
+  };
+  const sync = await syncCaseWithCourt(db, record);
+  record.updatedAt = new Date().toISOString();
+  saveDb();
+  publishToUsers([record.clientId, record.advocateId], 'cases', { caseId: record.id });
+  publishToAdmins('cases', { caseId: record.id });
+  return res.json({ case: toApi(record, db), sync });
+}
+
+/**
  * Attorney pulls the latest court records for a linked case: new docket
  * entries join the timeline and a terminated docket closes the case.
  */
@@ -289,6 +322,7 @@ export function addCaseUpdate(req: AuthedRequest, res: Response) {
   }
 
   const now = new Date().toISOString();
+  const label = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
   if (body.title?.trim()) {
     const event: CaseEvent = {
       id: createId(),
@@ -300,9 +334,31 @@ export function addCaseUpdate(req: AuthedRequest, res: Response) {
     };
     record.timeline.push(event);
   }
-  if (hasStatus) record.status = body.status as CaseStatus;
-  if (hasPriority) record.priority = body.priority as CasePriority;
-  if (hasHearing) record.nextHearing = body.nextHearing;
+  // Field changes are recorded on the timeline too, so the history of a
+  // case (Active → Discovery → Hearing …) stays visible to both sides.
+  const changes: string[] = [];
+  if (hasStatus && body.status !== record.status) {
+    changes.push(`Status changed to ${label(body.status!)} (was ${label(record.status)})`);
+    record.status = body.status as CaseStatus;
+  }
+  if (hasPriority && body.priority !== record.priority) {
+    changes.push(`Priority set to ${label(body.priority!)}${record.priority ? ` (was ${label(record.priority)})` : ''}`);
+    record.priority = body.priority as CasePriority;
+  }
+  if (hasHearing && body.nextHearing !== record.nextHearing) {
+    changes.push(`Next court event set to ${body.nextHearing}${record.nextHearing ? ` (was ${record.nextHearing})` : ''}`);
+    record.nextHearing = body.nextHearing;
+  }
+  if (changes.length > 0) {
+    record.timeline.push({
+      id: createId(),
+      date: now.slice(0, 10),
+      title: changes[0].split(' (was')[0],
+      description: changes.length > 1 ? changes.join('. ') : changes[0].includes('(was') ? changes[0].slice(changes[0].indexOf('(') + 1, -1) : undefined,
+      source: 'attorney',
+      createdAt: now,
+    });
+  }
   record.updatedAt = now;
 
   const parts: string[] = [];
@@ -593,11 +649,26 @@ export async function docketLookup(req: AuthedRequest, res: Response) {
   if (!caseNumber) {
     return res.status(400).json({ error: 'caseNumber is required' });
   }
+  const state = (req.query.state as string | undefined)?.trim() || undefined;
+  const court = (req.query.court as string | undefined)?.trim();
   try {
-    const result = await lookupDocket(caseNumber);
+    const result = await lookupDocket(caseNumber, {
+      state,
+      courtIds: court ? court.split(/[\s,]+/).filter(Boolean) : undefined,
+    });
     return res.json(result);
   } catch (err) {
     console.error('Docket lookup failed:', err);
-    return res.json({ available: false, results: [] });
+    return res.json({ available: false, results: [], exact: false });
   }
+}
+
+/**
+ * GET /cases/courts?state=Texas — federal district and bankruptcy courts the
+ * attorney can narrow a docket search to. Without a state, every court.
+ */
+export function listCourts(req: AuthedRequest, res: Response) {
+  const state = (req.query.state as string | undefined)?.trim();
+  const courts = state ? courtsForState(state) : usCourts();
+  return res.json({ courts });
 }

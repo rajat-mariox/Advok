@@ -1,17 +1,15 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'api_service.dart';
 
-/// OAuth 2.0 **Web application** client ID from Google Cloud Console.
-/// The app requests its Google ID token for this audience and the backend
-/// verifies against the same ID (backend env var GOOGLE_CLIENT_ID).
-///
-/// Replace the default below with your real ID, or pass it at run time:
-/// flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=xxxx.apps.googleusercontent.com
-const String _serverClientId = String.fromEnvironment(
-  'GOOGLE_SERVER_CLIENT_ID',
-  defaultValue: 'REPLACE_ME.apps.googleusercontent.com',
-);
+/// Optional build-time override of the Google client IDs. Normally empty:
+/// the IDs come from the backend (GET /auth/config, backend/.env), so a
+/// credential change never needs a new app build.
+const String _envServerClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+const String _envIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
 
 /// Runs the native Google sign-in flow and logs the user in on the backend.
 class GoogleAuthService {
@@ -23,16 +21,27 @@ class GoogleAuthService {
   /// when they dismissed the Google account picker. Throws [ApiException]
   /// for real failures so callers can show the message in a snackbar.
   static Future<bool> signIn({String? country}) async {
-    if (_serverClientId.startsWith('REPLACE_ME')) {
-      throw ApiException(
-        'Google login is not set up yet: paste your Web client ID in '
-        'google_auth_service.dart (see the comment at the top of that file).',
-      );
-    }
     final signIn = GoogleSignIn.instance;
     if (!_initialized) {
+      var serverClientId = _envServerClientId;
+      var iosClientId = _envIosClientId;
+      if (serverClientId.isEmpty) {
+        final config = await ApiService.fetchAuthConfig();
+        final google = config['google'] as Map<String, dynamic>? ?? const {};
+        serverClientId = google['webClientId'] as String? ?? '';
+        iosClientId = iosClientId.isNotEmpty ? iosClientId : (google['iosClientId'] as String? ?? '');
+      }
+      if (serverClientId.isEmpty) {
+        throw ApiException(
+          'Google login is not set up yet. Add GOOGLE_CLIENT_ID to backend/.env '
+          'and restart the server.',
+        );
+      }
       try {
-        await signIn.initialize(serverClientId: _serverClientId);
+        await signIn.initialize(
+          serverClientId: serverClientId,
+          clientId: (!kIsWeb && Platform.isIOS && iosClientId.isNotEmpty) ? iosClientId : null,
+        );
       } catch (_) {
         throw ApiException(
           'Google sign-in is not available. Check the app configuration.',

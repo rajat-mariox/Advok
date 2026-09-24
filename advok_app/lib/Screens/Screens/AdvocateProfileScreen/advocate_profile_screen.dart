@@ -7,6 +7,7 @@ import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/Responsive/responsive.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 import '../BookingScreen/consultation_type_screen.dart';
+import '../MessagesScreen/chat_screen.dart';
 
 class AdvocateProfileScreen extends StatelessWidget {
   const AdvocateProfileScreen({super.key, required this.advocate});
@@ -91,6 +92,22 @@ class AdvocateProfileScreen extends StatelessWidget {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: () {
+                        // Law students connect with attorneys by message
+                        // (mentorship / career guidance); others book.
+                        if (Session.role == 'law_student') {
+                          if (advocate.id.isEmpty) return;
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                name: advocate.name,
+                                peerId: advocate.id,
+                                online: true,
+                                specialty: advocate.specialty,
+                              ),
+                            ),
+                          );
+                          return;
+                        }
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => ConsultationTypeScreen(
@@ -102,14 +119,17 @@ class AdvocateProfileScreen extends StatelessWidget {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SvgPicture.asset(
-                            'assets/icons/ic_calendar_white.svg',
-                            width: 18,
-                            height: 18,
-                          ),
+                          if (Session.role == 'law_student')
+                            const Icon(Icons.chat_bubble_outline, size: 18, color: AppColors.white)
+                          else
+                            SvgPicture.asset(
+                              'assets/icons/ic_calendar_white.svg',
+                              width: 18,
+                              height: 18,
+                            ),
                           const SizedBox(width: 8),
-                          const Text(
-                            'Book Appointment',
+                          Text(
+                            Session.role == 'law_student' ? 'Message for Guidance' : 'Book Appointment',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,

@@ -125,6 +125,24 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
   /// The docket the case will sync from, once the attorney picks a match.
   _DocketMatch? _linked;
 
+  /// Narrow the court-records search to one state's federal courts, and
+  /// optionally to one court, so the same docket number in other courts
+  /// doesn't show up.
+  String? _searchState;
+  String? _searchCourtId;
+  List<({String id, String name})> _stateCourts = const [];
+
+  /// Every federal district/bankruptcy court, from the backend (55 states
+  /// and territories incl. District of Columbia and Puerto Rico). Loaded
+  /// once; the state list is derived from it, not from the country catalog.
+  List<({String id, String name, String state})> _allCourts = const [];
+
+  List<String> get _searchStates {
+    if (_allCourts.isEmpty) return CountryCatalog.selected.states;
+    final states = _allCourts.map((c) => c.state).toSet().toList()..sort();
+    return states;
+  }
+
   String? _court;
   String? _practiceArea;
   CasePriority? _priority;
@@ -152,6 +170,26 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
     super.initState();
     _caseNumberController.addListener(_onDocketNumberChanged);
     _loadClients();
+    _loadCourts();
+  }
+
+  Future<void> _loadCourts() async {
+    try {
+      final rows = await ApiService.fetchCourts();
+      if (!mounted) return;
+      setState(() {
+        _allCourts = rows
+            .map((c) => (
+                  id: c['id'] as String? ?? '',
+                  name: c['name'] as String? ?? '',
+                  state: c['state'] as String? ?? '',
+                ))
+            .where((c) => c.id.isNotEmpty && c.state.isNotEmpty)
+            .toList();
+      });
+    } on ApiException {
+      // Falls back to the country catalog's state list.
+    }
   }
 
   /// Editing the docket number after linking breaks the link — the sync
@@ -201,16 +239,26 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
     if (number.isEmpty || _searching) return;
     setState(() => _searching = true);
     try {
-      final data = await ApiService.docketLookup(number);
+      final data = await ApiService.docketLookup(
+        number,
+        state: _searchState,
+        courtId: _searchCourtId,
+      );
       if (!mounted) return;
+      final matches = (data['results'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(_DocketMatch.fromApi)
+          .toList();
       setState(() {
         _searched = true;
         _lookupAvailable = data['available'] == true;
-        _matches = (data['results'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>()
-            .map(_DocketMatch.fromApi)
-            .toList();
+        _matches = matches;
       });
+      // Exactly one docket matched (or a CourtListener link was pasted):
+      // link it straight away instead of asking the attorney to tap it.
+      if (matches.length == 1 && matches.first.docketId > 0) {
+        _applyMatch(matches.first);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -219,6 +267,19 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
     } finally {
       if (mounted) setState(() => _searching = false);
     }
+  }
+
+  void _pickSearchState(String? state) {
+    setState(() {
+      _searchState = state;
+      _searchCourtId = null;
+      _stateCourts = state == null
+          ? const []
+          : _allCourts
+              .where((c) => c.state == state)
+              .map((c) => (id: c.id, name: c.name))
+              .toList();
+    });
   }
 
   void _applyMatch(_DocketMatch match) {
@@ -261,7 +322,7 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
     if (!_formValid || _submitting) return;
     setState(() => _submitting = true);
     try {
-      await ApiService.createCase(
+      final result = await ApiService.createCase(
         clientId: _clientId!,
         title: _titleController.text.trim(),
         caseNumber: _caseNumberController.text.trim(),
@@ -273,6 +334,23 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
         courtDocketId: _linked?.docketId,
       );
       if (!mounted) return;
+      final created = result;
+      final events = (created['timeline'] as List<dynamic>? ?? const [])
+          .where((e) => e is Map && e['source'] == 'court_api')
+          .length;
+      final status = created['status'] as String? ?? 'active';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _linked == null
+                ? 'Case created.'
+                : events > 0
+                    ? 'Case created and linked — $events court filings added to the '
+                        'timeline${status == 'closed' ? ', marked Closed by the court' : ''}.'
+                    : 'Case created and linked — no filings on record yet; it will sync automatically.',
+          ),
+        ),
+      );
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -474,66 +552,154 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
         ),
       );
     }
-    return Column(
-      children: [
-        for (int i = 0; i < _clients.length; i++) ...[
-          if (i > 0) const SizedBox(height: 8),
-          _buildClientTile(_clients[i]),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildClientTile(_ClientOption client) {
-    final selected = _clientId == client.id;
+    // Tap the field, pick a client from a bottom sheet (photo + name).
+    final selected = _clients.where((c) => c.id == _clientId).firstOrNull;
     return Material(
       color: AppColors.fillGrey,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => setState(() => _clientId = client.id),
+        onTap: _showClientPicker,
         child: Container(
-          padding: const EdgeInsets.all(12),
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected ? AppColors.textPrimary : AppColors.borderGrey,
-              width: selected ? 1.6 : 1,
+              color: selected != null ? AppColors.textPrimary : AppColors.borderGrey,
             ),
           ),
           child: Row(
             children: [
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: ClipOval(
-                  child: client.photoBytes == null
-                      ? InitialsAvatar(name: client.name, size: 40)
-                      : Image.memory(client.photoBytes!, fit: BoxFit.cover),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  client.name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.08,
-                    color: AppColors.textPrimary,
+              if (selected == null) ...[
+                const Icon(Icons.person_outline, size: 20, color: AppColors.textGrey),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Select client',
+                    style: TextStyle(
+                      fontSize: 14,
+                      letterSpacing: -0.15,
+                      color: AppColors.textGrey,
+                    ),
                   ),
                 ),
-              ),
-              Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 20,
-                color:
-                    selected ? AppColors.textPrimary : AppColors.textGrey,
-              ),
+              ] else
+                Expanded(child: _clientRow(selected, compact: true)),
+              const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textGrey555),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  void _showClientPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Text(
+                'Select Client',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  height: 24 / 17,
+                  letterSpacing: -0.34,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Clients whose consultation you accepted.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.textGrey555),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 12),
+                children: [
+                  for (final client in _clients)
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                      leading: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: ClipOval(
+                          child: client.photoBytes == null
+                              ? InitialsAvatar(name: client.name, size: 40)
+                              : Image.memory(client.photoBytes!, fit: BoxFit.cover),
+                        ),
+                      ),
+                      title: Text(
+                        client.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: client.id == _clientId
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          height: 20 / 14,
+                          letterSpacing: -0.15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      trailing: client.id == _clientId
+                          ? const Icon(Icons.check_rounded, size: 18, color: AppColors.textPrimary)
+                          : null,
+                      onTap: () {
+                        setState(() => _clientId = client.id);
+                        Navigator.of(sheetContext).pop();
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Photo + name row shown in the field once a client is selected.
+  Widget _clientRow(_ClientOption client, {bool compact = false}) {
+    final size = compact ? 30.0 : 36.0;
+    return Row(
+      children: [
+        SizedBox(
+          width: size,
+          height: size,
+          child: ClipOval(
+            child: client.photoBytes == null
+                ? InitialsAvatar(name: client.name, size: size)
+                : Image.memory(client.photoBytes!, fit: BoxFit.cover),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            client.name,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.1,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -545,7 +711,41 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
         const SizedBox(height: 8),
         _buildTextField(
           controller: _caseNumberController,
-          hint: 'e.g. 1:24-cv-01234',
+          hint: 'e.g. 1:24-cv-01234, or paste a CourtListener docket link',
+        ),
+        const SizedBox(height: 10),
+        const _FieldLabel('Search in (state / court)'),
+        const SizedBox(height: 8),
+        _buildDropdown(
+          value: _searchState,
+          hint: 'Any state',
+          options: _searchStates,
+          onChanged: _pickSearchState,
+        ),
+        if (_searchState != null) ...[
+          const SizedBox(height: 8),
+          _buildDropdown(
+                  value: _stateCourts
+                          .any((c) => c.id == _searchCourtId)
+                      ? _stateCourts
+                          .firstWhere((c) => c.id == _searchCourtId)
+                          .name
+                      : null,
+                  hint: 'All federal courts in $_searchState',
+                  options: _stateCourts.map((c) => c.name).toList(),
+                  onChanged: (name) => setState(() {
+                    _searchCourtId = _stateCourts
+                        .where((c) => c.name == name)
+                        .map((c) => c.id)
+                        .firstOrNull;
+                  }),
+                ),
+        ],
+        const SizedBox(height: 4),
+        const Text(
+          'The same docket number exists in many courts. Pick the state or '
+          'court to get one exact match, which links automatically.',
+          style: TextStyle(fontSize: 11.5, height: 1.4, color: AppColors.textGrey),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -603,8 +803,9 @@ class _AddCaseScreenState extends State<AddCaseScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Matches found — tap one to link the case to its court records:',
+        Text(
+          '${_matches.length} dockets share this number — tap the right court to link it '
+          '(or narrow the search by state above):',
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w600,

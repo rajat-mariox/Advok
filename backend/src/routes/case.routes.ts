@@ -7,9 +7,11 @@ const router = Router();
 router.get('/', requireRole('client', 'advocate', 'law_firm'), cases.listMyCases);
 router.post('/', requireRole('advocate'), cases.createCase);
 router.get('/docket-lookup', requireRole('advocate'), cases.docketLookup);
+router.get('/courts', requireRole('advocate', 'law_firm'), cases.listCourts);
 router.get('/:id', requireRole('client', 'advocate', 'law_firm'), cases.getCase);
 router.post('/:id/updates', requireRole('advocate'), cases.addCaseUpdate);
 router.post('/:id/sync', requireRole('advocate'), cases.syncCase);
+router.post('/:id/link', requireRole('advocate'), cases.linkCase);
 router.post('/:id/documents', requireRole('advocate'), cases.addCaseDocument);
 router.post(
   '/:id/document-requests',

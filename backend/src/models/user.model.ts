@@ -147,4 +147,6 @@ export interface User {
   createdAt: string;
   onboardedAt?: string;
   reviewedAt?: string;
+  /** Devices registered for push notifications (FCM tokens), newest first. */
+  pushTokens?: { token: string; platform: string; updatedAt: string }[];
 }

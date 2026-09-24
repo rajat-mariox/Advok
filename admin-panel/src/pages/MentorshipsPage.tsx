@@ -1,37 +1,109 @@
-import { useMemo, useState } from 'react';
-import { IconSearch } from '../components/Icon';
-import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader } from '../components/ui';
-import { mentorshipRequests } from '../utils/seed';
+import { useEffect, useMemo, useState } from 'react';
+import { IconChat, IconGraduation, IconSearch, IconUsers } from '../components/Icon';
+import { Avatar, Badge, Drawer, FilterChips, InfoRow, PageHeader, StatCard } from '../components/ui';
+import {
+  fetchConnectionThread,
+  fetchConnections,
+  formatDate,
+  type ConnectionCounts,
+  type ConnectionMessage,
+  type StudentAttorneyConnection,
+} from '../utils/backend';
+import { useRealtime } from '../utils/realtime';
 
-const FILTERS = ['All', 'Requested', 'Accepted', 'Completed', 'Declined'];
+const FILTERS = ['All', 'Active', 'Awaiting reply'];
 
+function statusLabel(c: StudentAttorneyConnection): string {
+  return c.status === 'active' ? 'Active' : 'Awaiting reply';
+}
+
+function timeLabel(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Mentorships = conversations between law students and attorneys. A student
+ * connects by messaging an attorney from the Attorneys tab in the app; every
+ * such pair shows here with the full conversation.
+ */
 export default function MentorshipsPage() {
+  const [connections, setConnections] = useState<StudentAttorneyConnection[]>([]);
+  const [counts, setCounts] = useState<ConnectionCounts>({ total: 0, active: 0, awaitingReply: 0, students: 0, attorneys: 0 });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [filter, setFilter] = useState('All');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ConnectionMessage[]>([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState('');
+
+  const load = () =>
+    fetchConnections()
+      .then((r) => {
+        setConnections(r.connections);
+        setCounts(r.counts);
+        setLoadError('');
+      })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load mentorships from the backend.'))
+      .finally(() => setLoading(false));
+
+  const selected = connections.find((c) => c.id === selectedId) ?? null;
+
+  const loadThread = (c: StudentAttorneyConnection) => {
+    setThreadLoading(true);
+    setThreadError('');
+    fetchConnectionThread(c.studentId, c.attorneyId)
+      .then(setThread)
+      .catch((err) => setThreadError(err instanceof Error ? err.message : 'Could not load the conversation'))
+      .finally(() => setThreadLoading(false));
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useRealtime(['mentorships'], () => {
+    void load();
+    if (selected) loadThread(selected);
+  });
+
+  const open = (c: StudentAttorneyConnection) => {
+    setSelectedId(c.id);
+    setThread([]);
+    loadThread(c);
+  };
 
   const list = useMemo(() => {
-    return mentorshipRequests.filter((m) => {
-      const matchesFilter = filter === 'All' || m.status === filter;
-      const q = query.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
+    return connections.filter((c) => {
+      const matchesFilter = filter === 'All' || statusLabel(c) === filter;
       const matchesQuery =
         !q ||
-        m.student.toLowerCase().includes(q) ||
-        m.mentor.toLowerCase().includes(q) ||
-        m.sessionType.toLowerCase().includes(q);
+        c.studentName.toLowerCase().includes(q) ||
+        c.attorneyName.toLowerCase().includes(q) ||
+        (c.studentCollege ?? '').toLowerCase().includes(q) ||
+        c.attorneySpecialty.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
-  }, [filter, query]);
-
-  const selected = mentorshipRequests.find((m) => m.id === selectedId) ?? null;
+  }, [connections, filter, query]);
 
   return (
     <div>
       <PageHeader
         eyebrow="Operations"
         title="Mentorships"
-        subtitle={`${mentorshipRequests.length} requests · mentors respond within 24 hours`}
+        subtitle={`${counts.total} student–attorney conversations · ${counts.awaitingReply} awaiting an attorney reply · started when a law student messages an attorney in the app`}
       />
+
+      <div className="grid-stats" style={{ marginBottom: 22 }}>
+        <StatCard icon={<IconChat />} value={String(counts.total)} label="Conversations" trend={`${counts.active} active · ${counts.awaitingReply} awaiting reply`} />
+        <StatCard icon={<IconGraduation />} value={String(counts.students)} label="Students Reaching Out" trend="Law students who messaged an attorney" />
+        <StatCard icon={<IconUsers />} value={String(counts.attorneys)} label="Attorneys Contacted" trend="Attorneys students have messaged" />
+      </div>
 
       <div className="row" style={{ justifyContent: 'space-between', gap: 14, marginBottom: 16, flexWrap: 'wrap' }}>
         <FilterChips options={FILTERS} active={filter} onChange={setFilter} />
@@ -39,7 +111,7 @@ export default function MentorshipsPage() {
           <IconSearch />
           <input
             className="input"
-            placeholder="Search student, mentor..."
+            placeholder="Search student, attorney, college…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ height: 40 }}
@@ -52,43 +124,50 @@ export default function MentorshipsPage() {
           <thead>
             <tr>
               <th>Student</th>
-              <th>Mentor</th>
-              <th>Session Type</th>
-              <th>Preferred Date</th>
-              <th>Preference</th>
-              <th>Requested</th>
+              <th>Attorney</th>
+              <th style={{ width: '32%' }}>Last message</th>
+              <th>Messages</th>
+              <th>Started</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {list.map((m) => (
-              <tr key={m.id} className="clickable" onClick={() => setSelectedId(m.id)}>
+            {list.map((c) => (
+              <tr key={c.id} className="clickable" onClick={() => open(c)}>
                 <td>
                   <div className="row" style={{ gap: 10 }}>
-                    <Avatar name={m.student} size={32} />
-                    <span className="cell-strong">{m.student}</span>
+                    <Avatar name={c.studentName} size={32} />
+                    <div>
+                      <div className="cell-strong">{c.studentName}</div>
+                      <div className="cell-sub">{[c.studentCollege, c.studentYear].filter(Boolean).join(' · ') || 'Law student'}</div>
+                    </div>
                   </div>
                 </td>
                 <td>
-                  <div className="cell-strong">{m.mentor}</div>
-                  <div className="cell-sub">{m.mentorSpecialty}</div>
+                  <div className="cell-strong">{c.attorneyName}</div>
+                  <div className="cell-sub">{[c.attorneySpecialty, c.attorneyFirm].filter(Boolean).join(' · ') || '—'}</div>
                 </td>
-                <td>{m.sessionType}</td>
-                <td>{m.preferredDate}</td>
                 <td>
-                  <div>{m.dayPreference}</div>
-                  <div className="cell-sub">{m.timePreference}</div>
+                  <div className="cell-sub" style={{ whiteSpace: 'normal', lineHeight: 1.4 }}>
+                    <strong>{c.lastFrom === 'student' ? 'Student' : 'Attorney'}:</strong>{' '}
+                    {c.lastMessage.length > 110 ? `${c.lastMessage.slice(0, 107)}…` : c.lastMessage}
+                  </div>
+                  <div className="cell-sub">{timeLabel(c.lastMessageAt)}</div>
                 </td>
-                <td>{m.requested}</td>
-                <td>
-                  <Badge label={m.status} />
-                </td>
+                <td>{c.messageCount}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{formatDate(c.startedAt)}</td>
+                <td><Badge label={statusLabel(c)} /></td>
               </tr>
             ))}
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
-                  No mentorship requests match this filter.
+                <td colSpan={6} style={{ textAlign: 'center', padding: 32, color: 'var(--text-grey)' }}>
+                  {loading
+                    ? 'Loading…'
+                    : loadError ||
+                      (connections.length === 0
+                        ? 'No conversations yet. They appear when a law student messages an attorney from the Attorneys tab.'
+                        : 'No conversations match this filter.')}
                 </td>
               </tr>
             )}
@@ -97,33 +176,63 @@ export default function MentorshipsPage() {
       </div>
 
       {selected && (
-        <Drawer title="Mentorship Request" onClose={() => setSelectedId(null)}>
-          <div className="row" style={{ gap: 14, marginBottom: 18 }}>
-            <Avatar name={selected.student} size={56} square />
+        <Drawer wide title="Mentorship Conversation" onClose={() => setSelectedId(null)}>
+          <div className="row" style={{ gap: 14, marginBottom: 14 }}>
+            <Avatar name={selected.studentName} size={48} square />
             <div>
               <div className="row" style={{ gap: 8 }}>
-                <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{selected.student}</span>
-                <Badge label={selected.status} />
+                <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: -0.3 }}>{selected.studentName}</span>
+                <Badge label={statusLabel(selected)} />
               </div>
               <div className="cell-sub" style={{ fontSize: 12.5 }}>
-                → {selected.mentor} · {selected.mentorSpecialty}
+                → {selected.attorneyName}
+                {selected.attorneySpecialty ? ` · ${selected.attorneySpecialty}` : ''}
               </div>
             </div>
           </div>
 
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Session</div>
-          <InfoRow k="Session Type" v={selected.sessionType} />
-          <InfoRow k="Preferred Date" v={selected.preferredDate} />
-          <InfoRow k="Day Preference" v={selected.dayPreference} />
-          <InfoRow k="Time Preference" v={selected.timePreference} />
-          <InfoRow k="Requested" v={selected.requested} />
+          <InfoRow k="Student" v={[selected.studentCollege, selected.studentYear].filter(Boolean).join(' · ') || '—'} />
+          <InfoRow k="Student phone" v={selected.studentPhone ?? '—'} />
+          <InfoRow k="Attorney" v={[selected.attorneyName, selected.attorneyFirm].filter(Boolean).join(' · ')} />
+          <InfoRow k="Started" v={timeLabel(selected.startedAt)} />
+          <InfoRow k="Messages" v={`${selected.messageCount} (student ${selected.fromStudent} · attorney ${selected.fromAttorney})`} />
 
-          <div className="eyebrow" style={{ margin: '18px 0 8px' }}>Student's Message</div>
-          <div
-            className="card-white"
-            style={{ padding: '12px 14px', fontSize: 13, lineHeight: 1.6, color: 'var(--text-grey-555)' }}
-          >
-            {selected.message}
+          <div className="eyebrow" style={{ margin: '18px 0 10px' }}>Conversation</div>
+          {threadLoading && thread.length === 0 ? (
+            <div className="cell-sub">Loading…</div>
+          ) : threadError ? (
+            <div className="note-box">{threadError}</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {thread.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    justifySelf: m.system ? 'center' : m.from === 'student' ? 'start' : 'end',
+                    maxWidth: m.system ? '100%' : '80%',
+                    background: m.system ? 'transparent' : m.from === 'student' ? 'var(--fill-grey, #f2f2f2)' : '#0a0a0a',
+                    color: m.system ? 'var(--text-grey)' : m.from === 'student' ? 'var(--text-primary)' : '#fff',
+                    border: m.from === 'student' && !m.system ? '1px solid var(--border-grey, #dedede)' : 'none',
+                    borderRadius: 14,
+                    padding: m.system ? '2px 0' : '9px 12px',
+                    fontSize: m.system ? 11.5 : 13,
+                    lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {!m.system && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, opacity: 0.7, marginBottom: 2 }}>
+                      {m.from === 'student' ? selected.studentName : selected.attorneyName} · {timeLabel(m.sentAt)}
+                    </div>
+                  )}
+                  {m.text}
+                </div>
+              ))}
+              {thread.length === 0 && <div className="cell-sub">No messages.</div>}
+            </div>
+          )}
+          <div className="cell-sub" style={{ marginTop: 14 }}>
+            Read-only. Mentoring is career and study guidance between the student and the attorney, not legal advice.
           </div>
         </Drawer>
       )}

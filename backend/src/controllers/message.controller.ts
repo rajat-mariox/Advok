@@ -11,6 +11,8 @@ import type {
 } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
+import { pushAdminNotification } from '../services/admin-notify.service';
+import { sendPush } from '../services/push.service';
 
 function messages(db: DbShape): ChatMessageRecord[] {
   db.messages ??= [];
@@ -154,6 +156,20 @@ function isFirmClientPair(db: DbShape, me: User, peerId: string): boolean {
   return roles.has('law_firm') && roles.has('client');
 }
 
+/** Display name for push titles / admin notifications. */
+function senderName(u: User): string {
+  const p = u.profile as
+    | { fullName?: string; firmName?: string; professional?: { fullName?: string } }
+    | undefined;
+  return (
+    p?.professional?.fullName?.trim() ||
+    p?.fullName?.trim() ||
+    p?.firmName?.trim() ||
+    u.name?.trim() ||
+    'ADVOK user'
+  );
+}
+
 function canChat(db: DbShape, me: User, peerId: string): boolean {
   if (isFirmClientPair(db, me, peerId)) return false;
   const related = (db.relationships ?? []).some(
@@ -162,6 +178,12 @@ function canChat(db: DbShape, me: User, peerId: string): boolean {
       (r.clientId === me.id && r.advocateId === peerId),
   );
   if (related) return true;
+  // Law students can reach out to any verified attorney (mentorship /
+  // career guidance); the first message is the "connection".
+  const peer = db.users.find((u) => u.id === peerId);
+  const approved = (u: User | undefined) => !!u && (u.status === 'approved' || u.status === 'active');
+  if (me.role === 'law_student' && peer?.role === 'advocate' && approved(peer)) return true;
+  if (me.role === 'advocate' && peer?.role === 'law_student' && approved(peer)) return true;
   return messages(db).some(
     (m) =>
       (m.fromId === me.id && m.toId === peerId) ||
@@ -304,6 +326,34 @@ export function sendMessage(req: AuthedRequest, res: Response) {
   saveDb();
   publishToUser(peerId, 'messages', { peerId: me.id, messageId: record.id });
   publishToUser(me.id, 'messages', { peerId, messageId: record.id });
+  // Phone push for the recipient (chat messages don't create in-app
+  // notification rows — the Messages tab already shows them).
+  sendPush(db, peerId, senderName(me), trimmed, { type: 'message', peerId: me.id });
+  // Student ↔ attorney conversations are the admin's "mentorships" list.
+  if (
+    (me.role === 'law_student' && peer.role === 'advocate') ||
+    (me.role === 'advocate' && peer.role === 'law_student')
+  ) {
+    const studentId = me.role === 'law_student' ? me.id : peerId;
+    const attorneyId = me.role === 'law_student' ? peerId : me.id;
+    const firstInPair =
+      messages(db).filter(
+        (m) =>
+          (m.fromId === studentId && m.toId === attorneyId) ||
+          (m.fromId === attorneyId && m.toId === studentId),
+      ).length === 1;
+    if (firstInPair && me.role === 'law_student') {
+      pushAdminNotification(
+        db,
+        'mentorship',
+        'New student–attorney conversation',
+        `${senderName(me)} messaged ${senderName(peer)}.`,
+        '/mentorships',
+      );
+      saveDb();
+    }
+    publishToAdmins('mentorships', { studentId });
+  }
   return res.json({ message: toApi(record) });
 }
 
