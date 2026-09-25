@@ -852,6 +852,11 @@ class ApiService {
     return _request('GET', '/notifications');
   }
 
+  /// Marks one notification as read (when the user opens it).
+  static Future<void> markNotificationRead(String id) async {
+    await _request('POST', '/notifications/$id/read');
+  }
+
   /// Marks all notifications as read.
   static Future<void> markNotificationsRead() async {
     await _request('POST', '/notifications/read');
