@@ -97,7 +97,13 @@ export function sendPush(
         tokens,
         notification: { title, body: body.length > 180 ? `${body.slice(0, 177)}…` : body },
         data: payload,
-        android: { priority: 'high', notification: { sound: 'default' } },
+        // channelId matches the channel MainActivity.kt creates with sound +
+        // high importance; without it Android drops the push on FCM's silent
+        // fallback channel.
+        android: {
+          priority: 'high',
+          notification: { channelId: 'advok_alerts_v4', sound: 'default', defaultSound: true, defaultVibrateTimings: true },
+        },
         apns: { payload: { aps: { sound: 'default' } } },
       });
       const dead = res.responses

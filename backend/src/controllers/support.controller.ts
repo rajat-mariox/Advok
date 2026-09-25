@@ -216,8 +216,10 @@ export function adminReplyTicket(req: Request, res: Response) {
   ticket.updatedAt = now;
   ticket.userUnread += 1;
   ticket.adminUnread = 0;
+  // Replying moves a fresh ticket to in-progress and reopens a resolved one
+  // (the admin is clearly still talking to the user).
   applyStatus(ticket, (nextStatus as SupportTicketStatus | undefined) ??
-    (ticket.status === 'open' ? 'in_progress' : ticket.status), now);
+    (ticket.status === 'open' || ticket.status === 'resolved' ? 'in_progress' : ticket.status), now);
 
   pushNotification(
     db,

@@ -576,7 +576,20 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
   Map<String, dynamic>? _ticket;
   String _error = '';
   final _reply = TextEditingController();
+  final _scroll = ScrollController();
   bool _sending = false;
+
+  /// Keeps the newest message in view, like a chat.
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
 
   @override
   void initState() {
@@ -590,6 +603,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
   @override
   void dispose() {
     _reply.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -597,10 +611,13 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
     try {
       final ticket = await ApiService.fetchSupportTicket(widget.ticketId);
       if (!mounted) return;
+      final grew = (ticket['replies'] as List<dynamic>? ?? []).length !=
+          (_ticket?['replies'] as List<dynamic>? ?? []).length;
       setState(() {
         _ticket = ticket;
         _error = '';
       });
+      if (grew || _ticket == null) _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -619,6 +636,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
         _ticket = ticket;
         _sending = false;
       });
+      _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);
@@ -656,6 +674,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView(
+                          controller: _scroll,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                           children: [
@@ -816,38 +835,70 @@ class _Bubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: fromAdmin ? AppColors.white : AppColors.fillGrey,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: fromAdmin ? AppColors.textPrimary : AppColors.borderGrey,
-          width: fromAdmin ? 1.2 : 1,
+    // Chat layout: the user's own messages sit on the right in a dark bubble,
+    // ADVOK Support on the left in a white one.
+    final mine = !fromAdmin;
+    final maxWidth = MediaQuery.sizeOf(context).width * 0.78;
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Column(
+          crossAxisAlignment:
+              mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3, left: 4, right: 4),
+              child: Text(
+                mine ? 'You' : 'ADVOK Support',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.4,
+                  color: AppColors.textGrey,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(13, 9, 13, 7),
+              decoration: BoxDecoration(
+                color: mine ? AppColors.textPrimary : AppColors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(mine ? 16 : 5),
+                  bottomRight: Radius.circular(mine ? 5 : 16),
+                ),
+                border: mine ? null : Border.all(color: AppColors.borderGrey),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 20 / 13.5,
+                      color: mine ? AppColors.white : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _ago(when),
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1.3,
+                      color: mine
+                          ? AppColors.white.withValues(alpha: 0.6)
+                          : AppColors.textGrey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${fromAdmin ? 'ADVOK Support' : 'You'} · ${_ago(when)}',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              height: 1.5,
-              color: AppColors.textGrey,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 13.5,
-              height: 20 / 13.5,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
       ),
     );
   }
