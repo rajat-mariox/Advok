@@ -16,7 +16,9 @@ import {
   GOOGLE_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   OTP_TTL_MS,
+  APP_NAME,
 } from '../config';
+import { isSmsConfigured, sendSms, toE164 } from '../services/sms.service';
 import type { AuthedRequest } from '../middlewares/auth.middleware';
 import type { Role } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
@@ -49,24 +51,42 @@ export function adminLogin(req: Request, res: Response) {
 }
 
 /** App login step 1: request an OTP for a phone number. */
-export function sendOtp(req: Request, res: Response) {
+export async function sendOtp(req: Request, res: Response) {
   const { phone, countryCode, country } = req.body ?? {};
   if (!isValidPhone(phone)) {
     return res.status(400).json({ error: 'A valid phone number is required' });
   }
-  const db = getDb();
+  const cc = typeof countryCode === 'string' ? countryCode : '';
   const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+  // With Twilio configured the code goes out by SMS and is never returned
+  // to the app. Without it (local/prototype) it is logged and sent back as
+  // devOtp so the app can prefill it.
+  if (isSmsConfigured()) {
+    try {
+      await sendSms(
+        toE164(cc, phone),
+        `${APP_NAME}: your verification code is ${otp}. It expires in ${Math.round(OTP_TTL_MS / 60000)} minutes.`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'SMS delivery failed';
+      console.error(`[OTP] SMS to ${cc}${phone} failed: ${msg}`);
+      return res.status(502).json({ error: `Could not send the SMS: ${msg}` });
+    }
+  }
+
+  const db = getDb();
   db.otps = db.otps.filter((o) => o.phone !== phone);
   db.otps.push({
     phone,
-    countryCode: typeof countryCode === 'string' ? countryCode : '',
+    countryCode: cc,
     country: typeof country === 'string' ? country : undefined,
     otp,
     expiresAt: Date.now() + OTP_TTL_MS,
   });
   saveDb();
-  // No SMS gateway in this prototype — the OTP is logged and returned as devOtp.
-  console.log(`[OTP] ${countryCode ?? ''}${phone} -> ${otp}`);
+  if (isSmsConfigured()) return res.json({ message: 'OTP sent' });
+  console.log(`[OTP] ${cc}${phone} -> ${otp}`);
   return res.json({ message: 'OTP sent', devOtp: otp });
 }
 

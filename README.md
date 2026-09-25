@@ -67,7 +67,7 @@ flutter run --dart-define=ADVOK_API_URL=http://192.168.1.34:4000/api
 
 Without `ADVOK_API_URL` the app uses the LAN IP hard-coded in [`advok_app/lib/Services/api_service.dart`](advok_app/lib/Services/api_service.dart) (`_devMachineLanIp`). The phone or emulator must be on the same Wi-Fi as the backend. Update that IP when your machine's IP changes (`ipconfig`).
 
-Login in development: the OTP is printed to the backend console (`[OTP] +1xxxxxxxxxx -> 123456`) and also returned as `devOtp` in the send-otp response. There is no SMS gateway.
+Login OTP: with Twilio configured (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM`) the code is sent by SMS and never returned to the app. Without it (local development) the OTP is printed to the backend console (`[OTP] +1xxxxxxxxxx -> 123456`) and returned as `devOtp` in the send-otp response so the app can prefill it.
 
 ---
 
@@ -96,6 +96,7 @@ Login in development: the OTP is printed to the backend console (`[OTP] +1xxxxxx
 | `FIREBASE_SERVICE_ACCOUNT` | for push | empty | Path to the Firebase service-account JSON (e.g. `keys/firebase-service-account.json`, gitignored) or the JSON inline. Enables phone push via FCM. |
 | `FIREBASE_PROJECT_ID` / `FIREBASE_MESSAGING_SENDER_ID` / `FIREBASE_ANDROID_API_KEY` / `FIREBASE_ANDROID_APP_ID` / `FIREBASE_IOS_API_KEY` / `FIREBASE_IOS_APP_ID` | for push | empty | Public Firebase app settings; served to the app by `GET /auth/config` so no google-services files are bundled. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` | for email | empty / 587 | Any SMTP provider (AWS SES, SendGrid, Gmail). Emails go out for bookings, case assigned, support replies, query answers and account approval. |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` + `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM` | for SMS | empty | Login OTP (and booking-accepted notice) by SMS. Trial accounts can only text verified numbers; US traffic needs A2P 10DLC via a Messaging Service. Empty = OTP returned as `devOtp`. |
 | `NEWS_FEEDS` | no | SCOTUSblog, ABA Journal, Congress.gov | Legal-news RSS sources for students, `key\|Name\|url\|Tag` entries separated by `;`. Free, no key. |
 
 ### `admin-panel/.env` / `.env.production`
@@ -134,7 +135,7 @@ services/
   pricing.service.ts     Consultation pricing rules
   firm.service.ts        Law-firm team / linked attorney helpers
   news.service.ts        Legal-news feed for students
-  sms.service.ts         OTP delivery stub (console)
+  sms.service.ts         OTP delivery via Twilio (falls back to console + devOtp)
 middlewares/             auth.middleware (requireAuth / requireRole), logger
 models/                  TypeScript interfaces for every collection (section 5)
 validators/              Body validators (e.g. CMS sections)

@@ -11,7 +11,7 @@ import type {
 } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { pushNotification, pushSystemMessage } from '../services/notify.service';
-import { sendSms } from '../services/sms.service';
+import { notifySms, toE164 } from '../services/sms.service';
 import { findLinkedAttorney, phoneKey } from '../services/firm.service';
 
 const CONSULTATION_LABELS: Record<string, string> = {
@@ -178,8 +178,8 @@ function establishRelationship(db: DbShape, booking: Booking): void {
     const contact = [contactPhone, contactEmail]
       .filter((c) => c.trim().length > 0)
       .join(' / ');
-    sendSms(
-      client.phone,
+    notifySms(
+      toE164(client.countryCode ?? '', client.phone ?? ''),
       `ADVOK: ${contactName} accepted your consultation on ${booking.date} at ` +
         `${booking.time}. Contact: ${contact || 'available in the app'}.`,
     );
