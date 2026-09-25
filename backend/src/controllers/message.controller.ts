@@ -370,6 +370,20 @@ export function listNotifications(req: AuthedRequest, res: Response) {
   });
 }
 
+/** Marks one of the user's notifications as read (opened from the list). */
+export function markNotificationRead(req: AuthedRequest, res: Response) {
+  const me = req.user!;
+  const db = getDb();
+  const n = (db.notifications ?? []).find((x) => x.id === req.params.id && x.userId === me.id);
+  if (!n) return res.status(404).json({ error: 'Notification not found' });
+  if (!n.readAt) {
+    n.readAt = new Date().toISOString();
+    saveDb();
+    publishToUser(me.id, 'notifications', { id: n.id, read: true });
+  }
+  return res.json({ ok: true });
+}
+
 /** Marks all of the user's notifications as read. */
 export function markNotificationsRead(req: AuthedRequest, res: Response) {
   const me = req.user!;
