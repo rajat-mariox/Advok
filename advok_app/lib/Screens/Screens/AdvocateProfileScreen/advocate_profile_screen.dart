@@ -7,6 +7,7 @@ import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/Responsive/responsive.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 import '../BookingScreen/consultation_type_screen.dart';
+import '../../../Services/saved_advocates.dart';
 import '../MessagesScreen/chat_screen.dart';
 
 class AdvocateProfileScreen extends StatelessWidget {
@@ -14,16 +15,31 @@ class AdvocateProfileScreen extends StatelessWidget {
 
   final Advocate advocate;
 
+  Future<void> _toggleSaved(BuildContext context) async {
+    try {
+      await SavedAdvocates.toggle(advocate.id);
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Knows which attorneys are saved so the heart shows the right state.
+    SavedAdvocates.ensureLoaded().catchError((_) {});
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(
+      // White status bar icons over the photo.
+      value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: AppColors.white,
       ),
       child: Scaffold(
         backgroundColor: AppColors.white,
         body: SafeArea(
+          top: false,
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -159,30 +175,52 @@ class AdvocateProfileScreen extends StatelessWidget {
   );
 
   Widget _buildHero(BuildContext context) {
+    final hasPhoto = advocate.photoBytes != null || advocate.image.isNotEmpty;
+    // Portrait-friendly height, and the photo is anchored to the top so the
+    // face is not cut off. It runs up under the status bar (no white strip).
+    final width = MediaQuery.sizeOf(context).width;
+    final statusBar = MediaQuery.paddingOf(context).top;
     return SizedBox(
-      height: context.rs(272),
+      height: (hasPhoto ? width * 1.05 : context.rs(272)) + statusBar,
       child: Stack(
         fit: StackFit.expand,
         children: [
           // Backend advocates carry their photo as bytes and have no asset
           // path; fall back to a dark backdrop so the hero never crashes.
           if (advocate.photoBytes != null)
-            Image.memory(advocate.photoBytes!, fit: BoxFit.cover)
+            Image.memory(
+              advocate.photoBytes!,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            )
           else if (advocate.image.isNotEmpty)
-            Image.asset(advocate.image, fit: BoxFit.cover)
+            Image.asset(
+              advocate.image,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            )
           else
             const ColoredBox(color: Color(0xFF2A2A2A)),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x33000000), Color(0xEB000000)],
+          // Dark only behind the buttons and the name, not over the face.
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0, 0.18, 0.55, 1],
+                  colors: [
+                    Color(0x66000000),
+                    Color(0x00000000),
+                    Color(0x00000000),
+                    Color(0xE6000000),
+                  ],
+                ),
               ),
             ),
           ),
           Positioned(
-            top: 12,
+            top: statusBar + 12,
             left: 20,
             right: 20,
             child: Row(
@@ -195,11 +233,18 @@ class AdvocateProfileScreen extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    _HeroCircleButton(
-                      icon: 'assets/icons/ic_heart_white.svg',
-                      iconSize: 16,
-                      onTap: () {
-                        // TODO: Toggle favourite.
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: SavedAdvocates.ids,
+                      builder: (context, ids, _) {
+                        final saved = ids.contains(advocate.id);
+                        return _HeroCircleButton(
+                          icon: 'assets/icons/ic_heart_white.svg',
+                          iconSize: 16,
+                          child: saved
+                              ? const Icon(Icons.favorite, color: Colors.white, size: 18)
+                              : null,
+                          onTap: () => _toggleSaved(context),
+                        );
                       },
                     ),
                     const SizedBox(width: 8),
@@ -410,11 +455,15 @@ class _HeroCircleButton extends StatelessWidget {
     required this.icon,
     required this.iconSize,
     required this.onTap,
+    this.child,
   });
 
   final String icon;
   final double iconSize;
   final VoidCallback onTap;
+
+  /// Replaces the svg icon (e.g. the filled heart when saved).
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +477,7 @@ class _HeroCircleButton extends StatelessWidget {
           width: 36,
           height: 36,
           child: Center(
-            child: SvgPicture.asset(icon, width: iconSize, height: iconSize),
+            child: child ?? SvgPicture.asset(icon, width: iconSize, height: iconSize),
           ),
         ),
       ),

@@ -149,4 +149,9 @@ export interface User {
   reviewedAt?: string;
   /** Devices registered for push notifications (FCM tokens), newest first. */
   pushTokens?: { token: string; platform: string; updatedAt: string }[];
+  /** Attorneys this user saved with the heart on their profile (user ids). */
+  savedAdvocates?: string[];
+  /** Profile > Notifications toggle. false = no phone push and no email
+   *  (in-app notifications are still recorded). Missing = on. */
+  notificationsEnabled?: boolean;
 }

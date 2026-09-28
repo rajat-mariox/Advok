@@ -87,6 +87,7 @@ export function sendPush(
   const user = db.users.find((u) => u.id === userId);
   const tokens = (user?.pushTokens ?? []).map((t) => t.token);
   if (!user || tokens.length === 0 || !isPushConfigured()) return;
+  if (user.notificationsEnabled === false) return; // turned off in Profile
   const payload: Record<string, string> = {};
   for (const [k, v] of Object.entries(data)) if (v) payload[k] = v;
   void (async () => {

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Utils/CountryData/country_catalog.dart';
 import 'push_service.dart';
+import 'saved_advocates.dart';
 import 'realtime_service.dart';
 
 /// Optional override: flutter run --dart-define=ADVOK_API_URL=http://...:4000/api
@@ -168,6 +169,7 @@ class Session {
     Realtime.instance.disconnect();
     // Stop pushes to this device; the call captures the auth token first.
     PushService.instance.unregister();
+    SavedAdvocates.clear();
     _token = null;
     _user = null;
     _persist();
@@ -306,6 +308,16 @@ class ApiService {
     await _request('POST', '/support/tickets/$ticketId/typing');
   }
 
+  /// Profile > Notifications toggle (phone push + email). Returns the user.
+  static Future<Map<String, dynamic>> setNotifications(bool enabled) async {
+    final data = await _request(
+      'PUT',
+      '/profile/notifications',
+      body: {'enabled': enabled},
+    );
+    return data['user'] as Map<String, dynamic>;
+  }
+
   /// Registers this device's FCM token for push notifications.
   static Future<void> registerPushToken(String token, String platform) async {
     await _request(
@@ -433,6 +445,25 @@ class ApiService {
     final data = await _request('GET', '/advocates');
     final list = data['advocates'] as List<dynamic>? ?? [];
     return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Attorneys the user saved with the heart, newest first (full cards).
+  static Future<List<Map<String, dynamic>>> fetchSavedAdvocates() async {
+    final data = await _request('GET', '/advocates/saved');
+    final list = data['advocates'] as List<dynamic>? ?? [];
+    return list.cast<Map<String, dynamic>>();
+  }
+
+  /// Saves an attorney; returns the saved ids.
+  static Future<List<String>> saveAdvocate(String id) async {
+    final data = await _request('POST', '/advocates/saved/$id');
+    return (data['ids'] as List<dynamic>? ?? []).cast<String>();
+  }
+
+  /// Removes an attorney from the saved list; returns the saved ids.
+  static Future<List<String>> unsaveAdvocate(String id) async {
+    final data = await _request('DELETE', '/advocates/saved/$id');
+    return (data['ids'] as List<dynamic>? ?? []).cast<String>();
   }
 
   /// Curated "Cases to Read" for law students (published ones only), in

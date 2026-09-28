@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../CommonWidgets/profile_sheets.dart';
 import '../../../Routes/app_routes.dart';
+import '../../../Services/account_actions.dart';
 import '../../../Services/api_service.dart';
 import '../../../Services/realtime_service.dart';
 import '../../../Services/session_provider.dart';
@@ -26,6 +27,20 @@ class FirmProfileScreen extends StatefulWidget {
 
 class _FirmProfileScreenState extends State<FirmProfileScreen>
     with RealtimeRefresh {
+  Future<void> _toggleNotifications() async {
+    final next = !_notificationsEnabled;
+    setState(() => _notificationsEnabled = next);
+    try {
+      await AccountActions.setNotifications(next);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = !next);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   /// Open (not closed) cases and distinct clients with a confirmed or
   /// completed consultation. Kept live: this tab is built once per session.
   int _activeCases = 0;
@@ -80,7 +95,7 @@ class _FirmProfileScreenState extends State<FirmProfileScreen>
     if (changed == true && mounted) setState(() {});
   }
 
-  bool _notificationsEnabled = true;
+  bool _notificationsEnabled = AccountActions.notificationsEnabled;
   String _location = '';
   final String _about = '';
 
@@ -170,11 +185,11 @@ class _FirmProfileScreenState extends State<FirmProfileScreen>
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_bell.svg',
                     title: 'Notifications',
-                    subtitle: 'Push & email enabled',
+                    subtitle: _notificationsEnabled
+                        ? 'Push & email enabled'
+                        : 'Push & email off',
                     trailing: _buildToggle(),
-                    onTap: () => setState(
-                      () => _notificationsEnabled = !_notificationsEnabled,
-                    ),
+                    onTap: _toggleNotifications,
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -242,7 +257,7 @@ class _FirmProfileScreenState extends State<FirmProfileScreen>
                     icon: 'assets/icons/ic_switch_role.svg',
                     title: 'Switch User Type',
                     subtitle: 'Currently: Law Firm',
-                    onTap: _openSwitchRoleSheet,
+                    onTap: () => AccountActions.switchUserType(context),
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -281,21 +296,6 @@ class _FirmProfileScreenState extends State<FirmProfileScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => const DeleteAccountSheet(),
     );
-  }
-
-  Future<void> _openSwitchRoleSheet() async {
-    final selectedRole = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      barrierColor: AppColors.black.withValues(alpha: 0.45),
-      backgroundColor: Colors.transparent,
-      builder: (context) => const RolePickerSheet(currentRoleIndex: 3),
-    );
-    // Staying on the current role needs no further action.
-    if (selectedRole == null || selectedRole == 3 || !mounted) return;
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openAboutSheet() {

@@ -967,6 +967,7 @@ class _AdvocateListCard extends StatelessWidget {
                     width: 72,
                     height: 72,
                     fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
                   )
                 : advocate.image.isEmpty
                 ? InitialsAvatar(name: advocate.name, size: 72)

@@ -41,7 +41,7 @@ export function pushNotification(
   });
   if (shouldEmail(type)) {
     const user = db.users.find((u) => u.id === userId);
-    const to = user ? emailOf(user) : undefined;
+    const to = user && user.notificationsEnabled !== false ? emailOf(user) : undefined;
     if (to) sendEmail(to, title, body);
   }
   const topic: RealtimeTopic | null = type.startsWith('booking_')

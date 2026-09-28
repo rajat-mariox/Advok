@@ -12,6 +12,7 @@ import '../../../Utils/Responsive/responsive.dart';
 import '../AdvocateListScreen/advocate_list_screen.dart';
 import '../AdvocateProfileScreen/advocate_profile_screen.dart';
 import '../AdvokAiScreen/advok_ai_screen.dart';
+import '../../../Utils/greeting.dart';
 import '../ClientCasesScreen/client_cases_screen.dart';
 import '../LawFirmScreen/law_firm_screens.dart';
 import '../MessagesScreen/messages_screen.dart';
@@ -167,12 +168,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with RealtimeRefres
     }
   }
 
-  String get _greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning,';
-    if (hour < 17) return 'Good afternoon,';
-    return 'Good evening,';
-  }
+  String get _greeting => timeGreeting();
 
   @override
   Widget build(BuildContext context) {
@@ -1197,7 +1193,7 @@ class _AdvocateCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (advocate.photoBytes != null)
-                    Image.memory(advocate.photoBytes!, fit: BoxFit.cover)
+                    Image.memory(advocate.photoBytes!, fit: BoxFit.cover, alignment: Alignment.topCenter)
                   else if (advocate.image.isEmpty)
                     _InitialsBox(name: advocate.name)
                   else
@@ -1762,7 +1758,7 @@ class _LiveResultRow extends StatelessWidget {
                   width: 44,
                   height: 44,
                   child: photoBytes != null
-                      ? Image.memory(photoBytes!, fit: BoxFit.cover)
+                      ? Image.memory(photoBytes!, fit: BoxFit.cover, alignment: Alignment.topCenter)
                       : _InitialsBox(name: name),
                 ),
               ),
