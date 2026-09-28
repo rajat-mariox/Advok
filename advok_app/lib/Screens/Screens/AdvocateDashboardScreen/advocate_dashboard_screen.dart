@@ -14,6 +14,7 @@ import '../AdvocateListScreen/advocate_list_screen.dart'
     show InitialsAvatar, decodePhotoDataUrl;
 import '../MessagesScreen/chat_screen.dart';
 import '../NotificationScreen/notification_screen.dart';
+import '../../../Utils/greeting.dart';
 
 class _ScheduleEntry {
   const _ScheduleEntry({
@@ -394,8 +395,8 @@ class _AdvocateDashboardScreenState extends State<AdvocateDashboardScreen> with 
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Good morning,',
+                Text(
+                  timeGreeting(),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,

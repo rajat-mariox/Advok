@@ -31,13 +31,15 @@ class AdvocateProfileScreen extends StatelessWidget {
     // Knows which attorneys are saved so the heart shows the right state.
     SavedAdvocates.ensureLoaded().catchError((_) {});
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(
+      // White status bar icons over the photo.
+      value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: AppColors.white,
       ),
       child: Scaffold(
         backgroundColor: AppColors.white,
         body: SafeArea(
+          top: false,
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -173,30 +175,52 @@ class AdvocateProfileScreen extends StatelessWidget {
   );
 
   Widget _buildHero(BuildContext context) {
+    final hasPhoto = advocate.photoBytes != null || advocate.image.isNotEmpty;
+    // Portrait-friendly height, and the photo is anchored to the top so the
+    // face is not cut off. It runs up under the status bar (no white strip).
+    final width = MediaQuery.sizeOf(context).width;
+    final statusBar = MediaQuery.paddingOf(context).top;
     return SizedBox(
-      height: context.rs(272),
+      height: (hasPhoto ? width * 1.05 : context.rs(272)) + statusBar,
       child: Stack(
         fit: StackFit.expand,
         children: [
           // Backend advocates carry their photo as bytes and have no asset
           // path; fall back to a dark backdrop so the hero never crashes.
           if (advocate.photoBytes != null)
-            Image.memory(advocate.photoBytes!, fit: BoxFit.cover)
+            Image.memory(
+              advocate.photoBytes!,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            )
           else if (advocate.image.isNotEmpty)
-            Image.asset(advocate.image, fit: BoxFit.cover)
+            Image.asset(
+              advocate.image,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            )
           else
             const ColoredBox(color: Color(0xFF2A2A2A)),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x33000000), Color(0xEB000000)],
+          // Dark only behind the buttons and the name, not over the face.
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0, 0.18, 0.55, 1],
+                  colors: [
+                    Color(0x66000000),
+                    Color(0x00000000),
+                    Color(0x00000000),
+                    Color(0xE6000000),
+                  ],
+                ),
               ),
             ),
           ),
           Positioned(
-            top: 12,
+            top: statusBar + 12,
             left: 20,
             right: 20,
             child: Row(

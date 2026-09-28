@@ -1339,7 +1339,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with RealtimeRefr
               child: ClipOval(
                 child: advocate.photoBytes == null
                     ? InitialsAvatar(name: advocate.name, size: 52)
-                    : Image.memory(advocate.photoBytes!, fit: BoxFit.cover),
+                    : Image.memory(advocate.photoBytes!, fit: BoxFit.cover, alignment: Alignment.topCenter),
               ),
             ),
           ),
