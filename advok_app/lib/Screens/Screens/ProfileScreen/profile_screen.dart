@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../../../Routes/app_routes.dart';
+import '../../../Services/account_actions.dart';
 import '../../../Services/api_service.dart';
 import '../../../Services/realtime_service.dart';
 import '../../../Services/session_provider.dart';
@@ -15,6 +16,10 @@ import '../../../Utils/CountryData/country_catalog.dart';
 import '../../../CommonWidgets/profile_sheets.dart';
 import 'edit_profile_screen.dart';
 import 'help_support_screen.dart';
+import '../SavedAdvocatesScreen/saved_advocates_screen.dart';
+import '../ClientCasesScreen/client_cases_screen.dart';
+import '../AdvocateCasesScreen/advocate_cases_screen.dart';
+import '../../../Services/saved_advocates.dart';
 
 /// Profile tab of the client flow.
 class ProfileScreen extends StatefulWidget {
@@ -25,7 +30,21 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
-  bool _notificationsEnabled = true;
+  Future<void> _toggleNotifications() async {
+    final next = !_notificationsEnabled;
+    setState(() => _notificationsEnabled = next);
+    try {
+      await AccountActions.setNotifications(next);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = !next);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  bool _notificationsEnabled = AccountActions.notificationsEnabled;
   String _location = '';
   final String _about = '';
 
@@ -40,6 +59,23 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
     // session: keep the counts live instead of loading them only at start.
     listenRealtime({'cases', 'bookings'}, (_) => _loadStats());
     _loadStats();
+    SavedAdvocates.ensureLoaded().catchError((_) {});
+  }
+
+  void _openCases() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Session.role == 'advocate'
+            ? AdvocateCasesScreen(onBack: () => Navigator.of(context).pop())
+            : const ClientCasesScreen(),
+      ),
+    );
+  }
+
+  void _openSaved() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SavedAdvocatesScreen()),
+    );
   }
 
   Future<void> _loadStats() async {
@@ -119,17 +155,29 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
                         '$_consultations session${_consultations == 1 ? '' : 's'}',
                   ),
                   _buildInsetDivider(),
-                  ProfileInfoRow(
-                    icon: 'assets/icons/ic_file.svg',
-                    label: 'Active Cases',
-                    value: '$_activeCases ongoing',
+                  InkWell(
+                    onTap: _openCases,
+                    child: ProfileInfoRow(
+                      icon: 'assets/icons/ic_file.svg',
+                      label: 'Active Cases',
+                      value: '$_activeCases ongoing',
+                    ),
                   ),
-                  _buildInsetDivider(),
-                  ProfileInfoRow(
-                    icon: 'assets/icons/ic_bookmark.svg',
-                    label: 'Saved ${CountryCatalog.terms.lawyerPlural}',
-                    value: '0 favorites',
-                  ),
+                  if (Session.role != 'advocate') ...[
+                    _buildInsetDivider(),
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: SavedAdvocates.ids,
+                      builder: (context, ids, _) => InkWell(
+                        onTap: _openSaved,
+                        child: ProfileInfoRow(
+                          icon: 'assets/icons/ic_bookmark.svg',
+                          label: 'Saved ${CountryCatalog.terms.lawyerPlural}',
+                          value:
+                              '${ids.length} favorite${ids.length == 1 ? '' : 's'}',
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               _buildSectionLabel('Preferences'),
@@ -148,11 +196,11 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_bell.svg',
                     title: 'Notifications',
-                    subtitle: 'Push & email enabled',
+                    subtitle: _notificationsEnabled
+                        ? 'Push & email enabled'
+                        : 'Push & email off',
                     trailing: _buildToggle(),
-                    onTap: () => setState(
-                      () => _notificationsEnabled = !_notificationsEnabled,
-                    ),
+                    onTap: _toggleNotifications,
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -219,8 +267,10 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_switch_role.svg',
                     title: 'Switch User Type',
-                    subtitle: 'Currently: Client',
-                    onTap: _openSwitchRoleSheet,
+                    subtitle: Session.role == 'advocate'
+                        ? 'Currently: ${CountryCatalog.terms.lawyerSingular}'
+                        : 'Currently: Client',
+                    onTap: () => AccountActions.switchUserType(context),
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -259,21 +309,6 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
       backgroundColor: Colors.transparent,
       builder: (context) => const DeleteAccountSheet(),
     );
-  }
-
-  Future<void> _openSwitchRoleSheet() async {
-    final selectedRole = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      barrierColor: AppColors.black.withValues(alpha: 0.45),
-      backgroundColor: Colors.transparent,
-      builder: (context) => const RolePickerSheet(currentRoleIndex: 0),
-    );
-    // Staying on the current role needs no further action.
-    if (selectedRole == null || selectedRole == 0 || !mounted) return;
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openAboutSheet() {
@@ -654,7 +689,14 @@ class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
               const SizedBox(width: 8),
               _buildStatCard('$_activeCases', 'Active Cases'),
               const SizedBox(width: 8),
-              _buildStatCard('0', 'Saved'),
+              Expanded(
+                child: ValueListenableBuilder<Set<String>>(
+                  valueListenable: SavedAdvocates.ids,
+                  builder: (context, ids, _) => Row(
+                    children: [_buildStatCard('${ids.length}', 'Saved')],
+                  ),
+                ),
+              ),
             ],
           ),
         ],

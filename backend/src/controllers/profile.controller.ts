@@ -110,3 +110,15 @@ export function unregisterPushToken(req: AuthedRequest, res: Response) {
   saveDb();
   return res.json({ ok: true });
 }
+
+/** Profile > Notifications toggle: turns phone push and email on or off. */
+export function setNotifications(req: AuthedRequest, res: Response) {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled (true/false) is required' });
+  }
+  const me = req.user!;
+  me.notificationsEnabled = enabled;
+  saveDb();
+  return res.json({ user: publicUser(me) });
+}

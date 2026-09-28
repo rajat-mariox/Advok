@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../CommonWidgets/profile_sheets.dart';
 import '../../../Routes/app_routes.dart';
+import '../../../Services/account_actions.dart';
 import '../../../Services/api_service.dart';
 import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
@@ -25,7 +26,21 @@ class StudentProfileScreen extends StatefulWidget {
 }
 
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
-  bool _notificationsEnabled = true;
+  Future<void> _toggleNotifications() async {
+    final next = !_notificationsEnabled;
+    setState(() => _notificationsEnabled = next);
+    try {
+      await AccountActions.setNotifications(next);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = !next);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  bool _notificationsEnabled = AccountActions.notificationsEnabled;
   String _location = '';
 
   /// Profile photo from the session (base64 data URL → bytes).
@@ -123,11 +138,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   ProfileMenuRow(
                     icon: 'assets/icons/ic_bell.svg',
                     title: 'Notifications',
-                    subtitle: 'Push & email enabled',
+                    subtitle: _notificationsEnabled
+                        ? 'Push & email enabled'
+                        : 'Push & email off',
                     trailing: _buildToggle(),
-                    onTap: () => setState(
-                      () => _notificationsEnabled = !_notificationsEnabled,
-                    ),
+                    onTap: _toggleNotifications,
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -195,7 +210,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     icon: 'assets/icons/ic_switch_role.svg',
                     title: 'Switch User Type',
                     subtitle: 'Currently: Law Student',
-                    onTap: _openSwitchRoleSheet,
+                    onTap: () => AccountActions.switchUserType(context),
                   ),
                   _buildInsetDivider(),
                   ProfileMenuRow(
@@ -234,21 +249,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => sheet,
     );
-  }
-
-  Future<void> _openSwitchRoleSheet() async {
-    final selectedRole = await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      barrierColor: AppColors.black.withValues(alpha: 0.45),
-      backgroundColor: Colors.transparent,
-      builder: (context) => const RolePickerSheet(currentRoleIndex: 2),
-    );
-    // Staying on the current role needs no further action.
-    if (selectedRole == null || selectedRole == 2 || !mounted) return;
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(AppRoutes.chooseRole, (route) => false);
   }
 
   Future<void> _openLogoutSheet() async {

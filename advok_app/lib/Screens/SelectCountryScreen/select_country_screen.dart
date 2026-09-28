@@ -17,6 +17,16 @@ class Country {
   final String dialCode;
 }
 
+/// The country the account was created with (Session.country), for going
+/// straight back to its login screen. Null when unknown.
+Country? countryByName(String? name) {
+  if (name == null || name.isEmpty) return null;
+  for (final c in [..._popularCountries, ..._allCountries]) {
+    if (c.name == name) return c;
+  }
+  return null;
+}
+
 const List<Country> _popularCountries = [
   Country(flag: '🇺🇸', name: 'United States', dialCode: '+1'),
   Country(flag: '🇬🇧', name: 'United Kingdom', dialCode: '+44'),

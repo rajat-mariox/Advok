@@ -113,21 +113,8 @@ class PushService {
     );
     // Android shows nothing for foreground pushes; the screens already
     // update live, so a light snackbar is enough.
-    FirebaseMessaging.onMessage.listen((m) {
-      final n = m.notification;
-      if (n == null || !Platform.isAndroid) return;
-      appMessengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(
-            [n.title, n.body].whereType<String>().join(' — '),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(label: 'View', onPressed: () => _open(m)),
-        ),
-      );
-    });
+    // App open: no popup. Screens update live and the bell shows the new
+    // notification; the system notification is only for background.
     FirebaseMessaging.onMessageOpenedApp.listen(_open);
     messaging.getInitialMessage().then((m) {
       if (m != null) {
