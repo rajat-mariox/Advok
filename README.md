@@ -594,8 +594,6 @@ Base path: `/api`. Send `Authorization: Bearer <token>` on protected routes. Err
 | POST | `/operations/clear` | Wipe bookings, cases, relationships, messages, notifications (users untouched). |
 | GET / PUT | `/pricing` | `ConsultationPricing`. |
 | GET / PUT | `/support-contact` | `SupportContact`. |
-| GET | `/mentorships` | Law student ↔ attorney conversations (a "mentorship" starts when a student messages an attorney): parties, last message, counts, status active / awaiting reply. |
-| GET | `/mentorships/:studentId/:attorneyId/messages` | The full conversation (read-only). |
 | GET | `/queries?status=&category=` | Law students' legal queries with student name/college/contact, pending first → `{ queries, counts: { total, pending, answered } }`. |
 | POST | `/queries/:id/answer` | `{ response, responderName? }` — sends the answer, notifies the student (`query_answered`); calling again updates the reply. |
 | DELETE | `/queries/:id` | Removes the query and its notifications. |
@@ -701,7 +699,6 @@ Routes in [`admin-panel/src/App.tsx`](admin-panel/src/App.tsx). Login at `/login
 | `/law-firms` | Firms, their teams, per-firm consultation fee | `/admin/users?role=law_firm`, `/admin/users/:id/firm-fee` |
 | `/bookings` | All consultations with filters, detail panel | `/admin/bookings` |
 | `/cases` | All cases with parties, status, court | `/admin/cases` |
-| `/mentorships` | Student ↔ attorney conversations with filters (active / awaiting reply), search, and a drawer showing the whole conversation | `/admin/mentorships` |
 | `/legal-queries` | Law students' legal queries: pending/answered filter, category filter, drawer to write or update the answer (shown as "ADVOK Legal Team" by default), delete | `/admin/queries` |
 | `/support` | Support tickets, reply, change status | `/admin/support/tickets` |
 | `/revenue` | Revenue overview | Bookings + seed helpers |
@@ -782,7 +779,7 @@ Screens/                      All screens (below)
   - *Generate Case Notes* → `CaseNotesPickerScreen` (pick a published case) → `CaseNotesScreen`: IRAC sections (Facts, Issue, Rule, Holding, Reasoning, Significance), tappable key terms, copy-all. Also reachable from a case's reader screen.
   - *Legal Dictionary* → `LegalDictionaryScreen`: search + A–Z browse of ~11k terms → `LegalTermScreen`: historical definition plus "Explain in plain English" by ADVOK AI (cached). Unknown terms go straight to the AI explanation.
   - Internship Portal, Mock Tests, Mentorship Access, Senior Queries: locked until verified (UI only).
-- **Attorneys** tab (`AdvocateListScreen`): every verified attorney. On an attorney's profile a law student gets **Message for Guidance** (instead of Book), which opens the chat; the admin sees these conversations under Mentorships.
+- **Attorneys** tab (`AdvocateListScreen`): every verified attorney. On an attorney's profile a law student gets **Message for Guidance** (instead of Book), which opens the chat.
 - **Legal Queries** (`LegalQueriesScreen`): *Ask a Question* (category + question ≤ 500 chars → `POST /queries`) and *My Queries* (pull-to-refresh, Pending/Answered chips, expand to read the ADVOK team's answer). The student is notified when an answer arrives.
 - **Profile** (`StudentProfileScreen`).
 

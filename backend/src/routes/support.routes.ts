@@ -10,5 +10,6 @@ router.get('/tickets', support.listMyTickets);
 router.post('/tickets', support.createTicket);
 router.get('/tickets/:id', support.getMyTicket);
 router.post('/tickets/:id/reply', support.replyToMyTicket);
+router.post('/tickets/:id/typing', support.userTyping);
 
 export default router;

@@ -4,7 +4,6 @@ import * as ai from '../controllers/ai.controller';
 import * as dictionary from '../controllers/dictionary.controller';
 import * as learning from '../controllers/learning.controller';
 import * as news from '../controllers/news.controller';
-import * as connections from '../controllers/connections.controller';
 import * as queries from '../controllers/query.controller';
 import * as settings from '../controllers/settings.controller';
 import * as support from '../controllers/support.controller';
@@ -40,8 +39,6 @@ router.put('/pricing', settings.updatePricing);
 router.get('/support-contact', settings.getSupportContact);
 router.put('/support-contact', settings.updateSupportContact);
 
-router.get('/mentorships', connections.adminList);
-router.get('/mentorships/:studentId/:attorneyId/messages', connections.adminThread);
 
 router.get('/queries', queries.adminList);
 router.post('/queries/:id/answer', queries.adminAnswer);
@@ -50,6 +47,7 @@ router.delete('/queries/:id', queries.adminDelete);
 router.get('/support/tickets', support.adminListTickets);
 router.get('/support/tickets/:id', support.adminGetTicket);
 router.post('/support/tickets/:id/reply', support.adminReplyTicket);
+router.post('/support/tickets/:id/typing', support.adminTyping);
 router.patch('/support/tickets/:id/status', support.adminSetTicketStatus);
 
 router.get('/ai/status', ai.status);

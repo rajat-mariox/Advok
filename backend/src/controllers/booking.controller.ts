@@ -11,7 +11,7 @@ import type {
 } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
 import { pushNotification, pushSystemMessage } from '../services/notify.service';
-import { notifySms, toE164 } from '../services/sms.service';
+import { notifyAttorneyDetails, toE164 } from '../services/sms.service';
 import { findLinkedAttorney, phoneKey } from '../services/firm.service';
 
 const CONSULTATION_LABELS: Record<string, string> = {
@@ -178,11 +178,12 @@ function establishRelationship(db: DbShape, booking: Booking): void {
     const contact = [contactPhone, contactEmail]
       .filter((c) => c.trim().length > 0)
       .join(' / ');
-    notifySms(
-      toE164(client.countryCode ?? '', client.phone ?? ''),
-      `ADVOK: ${contactName} accepted your consultation on ${booking.date} at ` +
-        `${booking.time}. Contact: ${contact || 'available in the app'}.`,
-    );
+    notifyAttorneyDetails(toE164(client.countryCode ?? '', client.phone ?? ''), {
+      attorney: contactName,
+      date: booking.date,
+      time: booking.time,
+      contact: contact || 'available in the app',
+    });
   }
 
   // Drop the contact card into the chat thread so the client can call
@@ -467,19 +468,25 @@ export function respondToBooking(action: 'accept' | 'decline') {
     }
     booking.status = action === 'accept' ? 'confirmed' : 'declined';
     booking.respondedAt = new Date().toISOString();
-    const advocateName = providerInfo(db.users.find((u) => u.id === me.id)).name;
+    const providerI = providerInfo(db.users.find((u) => u.id === me.id));
+    const advocateName = providerI.name;
     if (action === 'accept') {
       establishRelationship(db, booking);
       const who = booking.assignedAttorney
         ? `${advocateName} assigned ${booking.assignedAttorney.name} to your consultation`
         : `${advocateName} accepted your consultation`;
+      // The attorney's contact goes straight into the notification (in-app +
+      // push + email), so the client has it even without SMS.
+      const contactPhone = booking.assignedAttorney?.phone?.trim() || providerI.phone;
+      const contactEmail = booking.assignedAttorney?.email?.trim() || providerI.email;
+      const contact = [contactPhone, contactEmail].filter((c) => c && c.trim().length > 0).join(' · ');
       pushNotification(
         db,
         booking.clientId,
         'booking_accepted',
         'Consultation confirmed',
         `${who} on ${booking.date} at ${booking.time}. ` +
-          'Their contact details are on your booking.',
+          (contact ? `Contact: ${contact}.` : 'Their contact details are on your booking.'),
         { bookingId: booking.id },
       );
       if (booking.assignedAttorney?.userId) {

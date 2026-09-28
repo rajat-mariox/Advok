@@ -137,6 +137,25 @@ export function getMyTicket(req: AuthedRequest, res: Response) {
 }
 
 /** User adds a follow-up message. Re-opens a resolved ticket. */
+/** User is typing on their ticket: every open admin session sees the hint. */
+export function userTyping(req: AuthedRequest, res: Response) {
+  const me = req.user!;
+  const db = getDb();
+  const ticket = tickets(db).find((t) => t.id === req.params.id && t.userId === me.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+  publishToAdmins('typing', { kind: 'support', ticketId: ticket.id, from: 'user' });
+  return res.json({ ok: true });
+}
+
+/** Admin is typing a reply: the user's open ticket screen shows the hint. */
+export function adminTyping(req: Request, res: Response) {
+  const db = getDb();
+  const ticket = tickets(db).find((t) => t.id === req.params.id);
+  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+  publishToUser(ticket.userId, 'typing', { kind: 'support', ticketId: ticket.id, from: 'admin' });
+  return res.json({ ok: true });
+}
+
 export function replyToMyTicket(req: AuthedRequest, res: Response) {
   const me = req.user!;
   const text = cleanText(req.body?.text);

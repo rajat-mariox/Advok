@@ -29,6 +29,7 @@ import {
   formatDate,
   replySupportTicket,
   roleLabel,
+  sendSupportTyping,
   setSupportTicketStatus,
   ticketCategoryLabel,
   ticketStatusLabel,
@@ -109,6 +110,11 @@ export default function SupportPage() {
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  // "<user> is typing…" under the thread for a few seconds after their app
+  // reports keystrokes on the selected ticket.
+  const [userTyping, setUserTyping] = useState(false);
+  const typingTimer = useRef<number | undefined>(undefined);
+  const lastTypingSent = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fill = useFillHeight<HTMLDivElement>();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -139,8 +145,17 @@ export default function SupportPage() {
   // A user message or another admin's reply: refresh the inbox and, if the
   // conversation is open, the thread itself.
   useRealtime(['support'], () => {
+    setUserTyping(false);
     void load();
     if (selectedId) void loadSelected(selectedId);
+  });
+
+  useRealtime(['typing'], (event) => {
+    const d = event.data ?? {};
+    if (d.kind !== 'support' || d.from !== 'user' || d.ticketId !== selectedId) return;
+    setUserTyping(true);
+    window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => setUserTyping(false), 3000);
   });
 
   useEffect(() => {
@@ -150,6 +165,7 @@ export default function SupportPage() {
     }
     setNote('');
     setReply('');
+    setUserTyping(false);
     void loadSelected(selectedId).then(() => void load());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -166,7 +182,7 @@ export default function SupportPage() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [bubbles.length, selectedId]);
+  }, [bubbles.length, selectedId, userTyping]);
 
   useEffect(() => {
     if (selectedId) inputRef.current?.focus();
@@ -533,6 +549,11 @@ export default function SupportPage() {
                   </div>
                 );
               })}
+              {userTyping && (
+                <div style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--text-grey)', fontStyle: 'italic', margin: '6px 0 2px' }}>
+                  {selected.userName} is typing…
+                </div>
+              )}
               {selected.status === 'resolved' && (
                 <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--text-grey)', margin: '10px 0 4px', fontWeight: 600 }}>
                   Resolved {selected.resolvedAt ? formatDate(selected.resolvedAt) : ''} · replying will reopen the conversation
@@ -552,6 +573,12 @@ export default function SupportPage() {
                   disabled={busy}
                   onChange={(e) => {
                     setReply(e.target.value);
+                    // Typing hint for the user's screen, at most every 2 s.
+                    const now = Date.now();
+                    if (e.target.value.trim() && selected && now - lastTypingSent.current > 2000) {
+                      lastTypingSent.current = now;
+                      void sendSupportTyping(selected.id).catch(() => undefined);
+                    }
                     const el = e.target;
                     el.style.height = 'auto';
                     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;

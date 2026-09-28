@@ -13,7 +13,6 @@ import LawFirmsPage from './pages/LawFirmsPage';
 import LawStudentsPage from './pages/LawStudentsPage';
 import LegalQueriesPage from './pages/LegalQueriesPage';
 import LoginPage from './pages/LoginPage';
-import MentorshipsPage from './pages/MentorshipsPage';
 import RevenuePage from './pages/RevenuePage';
 import SettingsPage from './pages/SettingsPage';
 import SupportPage from './pages/SupportPage';
@@ -44,7 +43,6 @@ export default function App() {
           <Route path="/law-firms" element={<LawFirmsPage />} />
           <Route path="/bookings" element={<BookingsPage />} />
           <Route path="/cases" element={<CasesPage />} />
-          <Route path="/mentorships" element={<MentorshipsPage />} />
           <Route path="/legal-queries" element={<LegalQueriesPage />} />
           <Route path="/support" element={<SupportPage />} />
           <Route path="/revenue" element={<RevenuePage />} />

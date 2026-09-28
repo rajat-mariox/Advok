@@ -99,7 +99,6 @@ export default function AdminLayout() {
         <div className="nav-group-label">Operations</div>
         <Item to="/bookings" icon={<IconCalendar />} label="Bookings" />
         <Item to="/cases" icon={<IconBriefcase />} label="Cases" />
-        <Item to="/mentorships" icon={<IconUserCheck />} label="Mentorships" />
         <Item to="/legal-queries" icon={<IconChat />} label="Legal Queries" />
         <Item to="/support" icon={<IconBell />} label="Help & Support" count={openTickets} />
         <Item to="/revenue" icon={<IconDollar />} label="Revenue" />
