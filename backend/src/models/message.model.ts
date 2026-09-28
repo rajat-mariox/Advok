@@ -47,8 +47,7 @@ export type AdminNotificationType =
   | 'support_ticket'
   | 'support_reply'
   | 'legal_query'
-  | 'booking'
-  | 'mentorship';
+  | 'booking';
 
 /** A notification for the admin panel's bell (shared by all admins). */
 export interface AdminNotification {

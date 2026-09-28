@@ -18,14 +18,15 @@ export type RealtimeTopic =
   | 'cases'
   | 'clients'
   | 'queries'
-  | 'mentorships'
   | 'adminNotifications'
   | 'support'
   | 'account'
   | 'settings'
   | 'registrations'
   | 'users'
-  | 'content';
+  | 'content'
+  // "X is typing" hints for chats and support threads; never stored.
+  | 'typing';
 
 export interface RealtimeEvent {
   topic: RealtimeTopic;

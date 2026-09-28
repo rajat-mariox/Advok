@@ -11,14 +11,14 @@ export type RealtimeTopic =
   | 'cases'
   | 'clients'
   | 'queries'
-  | 'mentorships'
   | 'adminNotifications'
   | 'support'
   | 'account'
   | 'settings'
   | 'registrations'
   | 'users'
-  | 'content';
+  | 'content'
+  | 'typing';
 
 export interface RealtimeEvent {
   topic: RealtimeTopic;

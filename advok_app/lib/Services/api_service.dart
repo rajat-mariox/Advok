@@ -296,6 +296,16 @@ class ApiService {
     _syncCountry();
   }
 
+  /// Tells the other side of a chat that we are typing (nothing stored).
+  static Future<void> sendTyping(String peerId) async {
+    await _request('POST', '/messages/with/$peerId/typing');
+  }
+
+  /// Tells the support team that we are typing on a ticket.
+  static Future<void> sendSupportTyping(String ticketId) async {
+    await _request('POST', '/support/tickets/$ticketId/typing');
+  }
+
   /// Registers this device's FCM token for push notifications.
   static Future<void> registerPushToken(String token, String platform) async {
     await _request(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -579,6 +581,29 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
   final _scroll = ScrollController();
   bool _sending = false;
 
+  /// "ADVOK Support is typing…" above the composer for a few seconds after
+  /// the admin panel reports keystrokes on this ticket.
+  bool _adminTyping = false;
+  Timer? _typingHide;
+  DateTime? _lastTypingSent;
+
+  void _showAdminTyping() {
+    _typingHide?.cancel();
+    if (!_adminTyping) setState(() => _adminTyping = true);
+    _typingHide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _adminTyping = false);
+    });
+  }
+
+  void _onTyping(String text) {
+    if (text.trim().isEmpty) return;
+    final now = DateTime.now();
+    final last = _lastTypingSent;
+    if (last != null && now.difference(last).inMilliseconds < 2000) return;
+    _lastTypingSent = now;
+    unawaited(ApiService.sendSupportTyping(widget.ticketId).catchError((_) {}));
+  }
+
   /// Keeps the newest message in view, like a chat.
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -594,7 +619,17 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
   @override
   void initState() {
     super.initState();
-    listenRealtime({'support'}, (_) {
+    listenRealtime({'support', 'typing'}, (e) {
+      if (e.topic == 'typing') {
+        final d = e.data ?? const {};
+        if (d['kind'] == 'support' &&
+            d['ticketId'] == widget.ticketId &&
+            d['from'] == 'admin') {
+          _showAdminTyping();
+        }
+        return;
+      }
+      if (_adminTyping) setState(() => _adminTyping = false);
       _load();
     });
     _load();
@@ -602,6 +637,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
 
   @override
   void dispose() {
+    _typingHide?.cancel();
     _reply.dispose();
     _scroll.dispose();
     super.dispose();
@@ -734,6 +770,22 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
                         ),
                       ),
               ),
+              if (t != null && _adminTyping)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'ADVOK Support is typing…',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                        height: 1.4,
+                        color: AppColors.textGrey,
+                      ),
+                    ),
+                  ),
+                ),
               if (t != null) _buildComposer(),
             ],
           ),
@@ -754,6 +806,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> w
           Expanded(
             child: TextField(
               controller: _reply,
+              onChanged: _onTyping,
               minLines: 1,
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,

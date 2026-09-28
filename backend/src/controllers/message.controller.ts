@@ -10,8 +10,7 @@ import type {
   User,
 } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
-import { publishToAdmins, publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
-import { pushAdminNotification } from '../services/admin-notify.service';
+import { publishToAll, publishToUser, publishToUsers } from '../services/realtime.service';
 import { sendPush } from '../services/push.service';
 
 function messages(db: DbShape): ChatMessageRecord[] {
@@ -329,31 +328,6 @@ export function sendMessage(req: AuthedRequest, res: Response) {
   // Phone push for the recipient (chat messages don't create in-app
   // notification rows — the Messages tab already shows them).
   sendPush(db, peerId, senderName(me), trimmed, { type: 'message', peerId: me.id });
-  // Student ↔ attorney conversations are the admin's "mentorships" list.
-  if (
-    (me.role === 'law_student' && peer.role === 'advocate') ||
-    (me.role === 'advocate' && peer.role === 'law_student')
-  ) {
-    const studentId = me.role === 'law_student' ? me.id : peerId;
-    const attorneyId = me.role === 'law_student' ? peerId : me.id;
-    const firstInPair =
-      messages(db).filter(
-        (m) =>
-          (m.fromId === studentId && m.toId === attorneyId) ||
-          (m.fromId === attorneyId && m.toId === studentId),
-      ).length === 1;
-    if (firstInPair && me.role === 'law_student') {
-      pushAdminNotification(
-        db,
-        'mentorship',
-        'New student–attorney conversation',
-        `${senderName(me)} messaged ${senderName(peer)}.`,
-        '/mentorships',
-      );
-      saveDb();
-    }
-    publishToAdmins('mentorships', { studentId });
-  }
   return res.json({ message: toApi(record) });
 }
 
@@ -381,6 +355,18 @@ export function markNotificationRead(req: AuthedRequest, res: Response) {
     saveDb();
     publishToUser(me.id, 'notifications', { id: n.id, read: true });
   }
+  return res.json({ ok: true });
+}
+
+/**
+ * "Is typing" hint for the other side of a chat. Nothing is stored; the
+ * peer's open chat screen shows the indicator for a few seconds.
+ */
+export function typing(req: AuthedRequest, res: Response) {
+  const me = req.user!;
+  const peerId = req.params.userId;
+  if (!peerId || peerId === me.id) return res.status(400).json({ error: 'userId is required' });
+  publishToUser(peerId, 'typing', { kind: 'chat', from: me.id });
   return res.json({ ok: true });
 }
 

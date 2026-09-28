@@ -77,6 +77,12 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
   Timer? _pollTimer;
   bool _sending = false;
 
+  /// "typing…" shown under the peer's name for a few seconds after their
+  /// device reports keystrokes.
+  bool _peerTyping = false;
+  Timer? _typingHide;
+  DateTime? _lastTypingSent;
+
   /// The document request currently uploading/downloading (disables its
   /// card's button).
   String? _busyRequestId;
@@ -94,9 +100,17 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
     if (widget.peerId != null) {
       _loadThread(scrollDown: true);
       // Messages arrive live; the slow poll only covers a dropped stream.
-      listenRealtime({'messages'}, (e) {
+      listenRealtime({'messages', 'typing'}, (e) {
+        if (e.topic == 'typing') {
+          final d = e.data ?? const {};
+          if (d['kind'] == 'chat' && d['from'] == widget.peerId) _showPeerTyping();
+          return;
+        }
         final peer = e.data?['peerId'];
-        if (peer == null || peer == widget.peerId) _loadThread(scrollDown: true);
+        if (peer == null || peer == widget.peerId) {
+          if (_peerTyping) setState(() => _peerTyping = false);
+          _loadThread(scrollDown: true);
+        }
       });
       _pollTimer = Timer.periodic(
         const Duration(seconds: 30),
@@ -108,9 +122,29 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _typingHide?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _showPeerTyping() {
+    _typingHide?.cancel();
+    if (!_peerTyping) setState(() => _peerTyping = true);
+    _typingHide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _peerTyping = false);
+    });
+  }
+
+  /// Sends a typing hint at most every 2 seconds while the user types.
+  void _onTyping(String text) {
+    final peerId = widget.peerId;
+    if (peerId == null || text.trim().isEmpty) return;
+    final now = DateTime.now();
+    final last = _lastTypingSent;
+    if (last != null && now.difference(last).inMilliseconds < 2000) return;
+    _lastTypingSent = now;
+    unawaited(ApiService.sendTyping(peerId).catchError((_) {}));
   }
 
   static String _timeLabel(String iso) {
@@ -182,6 +216,7 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
     }
 
     setState(() => _sending = true);
+    _lastTypingSent = null;
     try {
       await ApiService.sendChatMessage(widget.peerId!, text);
       _controller.clear();
@@ -305,13 +340,15 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
 
   Widget _buildHeader() {
     final headline = (_peer?['headline'] as String? ?? '').trim();
-    final subtitle = [
-      widget.online ? 'Online' : 'Offline',
-      if (headline.isNotEmpty)
-        headline
-      else if (widget.specialty != null)
-        widget.specialty!,
-    ].join(' · ');
+    final subtitle = _peerTyping
+        ? 'typing…'
+        : [
+            widget.online ? 'Online' : 'Offline',
+            if (headline.isNotEmpty)
+              headline
+            else if (widget.specialty != null)
+              widget.specialty!,
+          ].join(' · ');
     final canShowDetails = widget.peerId != null && _peer != null;
     return Container(
       decoration: const BoxDecoration(
@@ -814,6 +851,7 @@ class _ChatScreenState extends State<ChatScreen> with RealtimeRefresh {
               child: Center(
                 child: TextField(
                   controller: _controller,
+                  onChanged: _onTyping,
                   onSubmitted: (_) => _sendMessage(),
                   textInputAction: TextInputAction.send,
                   style: const TextStyle(

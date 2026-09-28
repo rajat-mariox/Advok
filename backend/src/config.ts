@@ -110,3 +110,19 @@ export const SMTP_SECURE = (process.env.SMTP_SECURE ?? '').trim() === 'true' || 
 export const SMTP_USER = (process.env.SMTP_USER ?? '').trim();
 export const SMTP_PASS = (process.env.SMTP_PASS ?? '').trim();
 export const MAIL_FROM = (process.env.MAIL_FROM ?? '').trim();
+
+// Twilio (login OTP over SMS). Leave empty to keep prototype mode, where
+// the OTP is logged and returned to the app as devOtp.
+export const TWILIO_ACCOUNT_SID = (process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+export const TWILIO_AUTH_TOKEN = (process.env.TWILIO_AUTH_TOKEN ?? '').trim();
+export const TWILIO_FROM = (process.env.TWILIO_FROM ?? '').trim();
+export const TWILIO_MESSAGING_SERVICE_SID = (process.env.TWILIO_MESSAGING_SERVICE_SID ?? '').trim();
+// Twilio Verify service (VA...): Twilio sends and checks the login code itself.
+export const TWILIO_VERIFY_SERVICE_SID = (process.env.TWILIO_VERIFY_SERVICE_SID ?? '').trim();
+// Content Template (HX...) for the attorney-details text; empty = plain text.
+export const TWILIO_ATTORNEY_CONTENT_SID = (process.env.TWILIO_ATTORNEY_CONTENT_SID ?? '').trim();
+
+// Login OTP delivery. "dev" forces test mode (OTP returned to the app as
+// devOtp) even when Twilio keys are present; anything else = Twilio when
+// configured, otherwise dev.
+export const PHONE_AUTH = (process.env.PHONE_AUTH ?? '').trim().toLowerCase();

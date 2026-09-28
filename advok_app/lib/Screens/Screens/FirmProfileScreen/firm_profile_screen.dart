@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../CommonWidgets/profile_sheets.dart';
 import '../../../Routes/app_routes.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../ProfileScreen/edit_profile_screen.dart';
@@ -23,7 +24,43 @@ class FirmProfileScreen extends StatefulWidget {
   State<FirmProfileScreen> createState() => _FirmProfileScreenState();
 }
 
-class _FirmProfileScreenState extends State<FirmProfileScreen> {
+class _FirmProfileScreenState extends State<FirmProfileScreen>
+    with RealtimeRefresh {
+  /// Open (not closed) cases and distinct clients with a confirmed or
+  /// completed consultation. Kept live: this tab is built once per session.
+  int _activeCases = 0;
+  int _clients = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    listenRealtime({'cases', 'bookings'}, (_) => _loadStats());
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final results = await Future.wait([
+        ApiService.fetchCases(),
+        ApiService.fetchBookings(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _activeCases =
+            results[0].where((c) => c['status'] != 'closed').length;
+        _clients = results[1]
+            .where((b) =>
+                b['status'] == 'confirmed' || b['status'] == 'completed')
+            .map((b) => b['clientId'])
+            .whereType<String>()
+            .toSet()
+            .length;
+      });
+    } catch (_) {
+      // Backend unreachable: counts stay as they are.
+    }
+  }
+
   /// Firm logo/photo from the session (base64 data URL → bytes).
   Uint8List? get _photoBytes {
     final photo = Session.photo;
@@ -641,9 +678,9 @@ class _FirmProfileScreenState extends State<FirmProfileScreen> {
                 'Attorneys',
               ),
               const SizedBox(width: 8),
-              _buildStatCard('0', 'Active Cases'),
+              _buildStatCard('$_activeCases', 'Active Cases'),
               const SizedBox(width: 8),
-              _buildStatCard('0', 'Clients'),
+              _buildStatCard('$_clients', 'Clients'),
             ],
           ),
         ],

@@ -1133,7 +1133,7 @@ class _FirmDashboardScreenState extends State<FirmDashboardScreen> with Realtime
               child: _FirmStatCard(
                 icon: 'assets/icons/ic_stat_cases.svg',
                 badge: '—',
-                value: '${_cases.length}',
+                value: '${_cases.where((c) => c.status.toLowerCase() != 'closed').length}',
                 label: 'Active Cases',
               ),
             ),

@@ -16,7 +16,9 @@ import {
   GOOGLE_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   OTP_TTL_MS,
+  APP_NAME,
 } from '../config';
+import { checkVerification, otpMode, sendOtpSms, startVerification, toE164 } from '../services/sms.service';
 import type { AuthedRequest } from '../middlewares/auth.middleware';
 import type { Role } from '../models';
 import { createId, getDb, saveDb } from '../services/db.service';
@@ -49,36 +51,80 @@ export function adminLogin(req: Request, res: Response) {
 }
 
 /** App login step 1: request an OTP for a phone number. */
-export function sendOtp(req: Request, res: Response) {
+export async function sendOtp(req: Request, res: Response) {
   const { phone, countryCode, country } = req.body ?? {};
   if (!isValidPhone(phone)) {
     return res.status(400).json({ error: 'A valid phone number is required' });
   }
+  const cc = typeof countryCode === 'string' ? countryCode : '';
+  let otp = String(Math.floor(100000 + Math.random() * 900000));
+
+  // In "sms" mode the code goes out through Twilio and is never returned
+  // to the app. In "dev" mode (no Twilio keys, or PHONE_AUTH=dev) it is
+  // logged and sent back as devOtp so the app can prefill it.
+  const mode = otpMode();
+  if (mode === 'verify') {
+    // Twilio Verify generates, sends and later checks the code itself.
+    try {
+      await startVerification(toE164(cc, phone));
+      otp = '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'SMS delivery failed';
+      console.error(`[OTP] Verify to ${cc}${phone} failed: ${msg}`);
+      return res.status(502).json({ error: `Could not send the SMS: ${msg}` });
+    }
+  } else if (mode === 'sms') {
+    try {
+      otp = await sendOtpSms(
+        toE164(cc, phone),
+        otp,
+        `${APP_NAME}: your verification code is ${otp}. It expires in ${Math.round(OTP_TTL_MS / 60000)} minutes.`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'SMS delivery failed';
+      console.error(`[OTP] SMS to ${cc}${phone} failed: ${msg}`);
+      return res.status(502).json({ error: `Could not send the SMS: ${msg}` });
+    }
+  }
+
   const db = getDb();
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
   db.otps = db.otps.filter((o) => o.phone !== phone);
   db.otps.push({
     phone,
-    countryCode: typeof countryCode === 'string' ? countryCode : '',
+    countryCode: cc,
     country: typeof country === 'string' ? country : undefined,
     otp,
     expiresAt: Date.now() + OTP_TTL_MS,
+    viaVerify: mode === 'verify',
   });
   saveDb();
-  // No SMS gateway in this prototype — the OTP is logged and returned as devOtp.
-  console.log(`[OTP] ${countryCode ?? ''}${phone} -> ${otp}`);
+  if (mode !== 'dev') return res.json({ message: 'OTP sent' });
+  console.log(`[OTP] ${cc}${phone} -> ${otp}`);
   return res.json({ message: 'OTP sent', devOtp: otp });
 }
 
 /** App login step 2: verify OTP. Creates the user on first login. */
-export function verifyOtp(req: Request, res: Response) {
+export async function verifyOtp(req: Request, res: Response) {
   const { phone, otp } = req.body ?? {};
   if (typeof phone !== 'string' || typeof otp !== 'string') {
     return res.status(400).json({ error: 'phone and otp are required' });
   }
   const db = getDb();
   const record = db.otps.find((o) => o.phone === phone);
-  if (!record || record.otp !== otp || Date.now() > record.expiresAt) {
+  if (!record || Date.now() > record.expiresAt) {
+    return res.status(401).json({ error: 'Invalid or expired OTP' });
+  }
+  if (record.viaVerify) {
+    let ok = false;
+    try {
+      ok = await checkVerification(toE164(record.countryCode, phone), otp.trim());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'verification failed';
+      console.error(`[OTP] Verify check for ${record.countryCode}${phone} failed: ${msg}`);
+      return res.status(502).json({ error: `Could not check the code: ${msg}` });
+    }
+    if (!ok) return res.status(401).json({ error: 'Invalid or expired OTP' });
+  } else if (record.otp !== otp) {
     return res.status(401).json({ error: 'Invalid or expired OTP' });
   }
   db.otps = db.otps.filter((o) => o.phone !== phone);

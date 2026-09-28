@@ -233,7 +233,7 @@ export default function LawStudentsPage() {
             <div className="note-box">
               <span className="k">While pending</span>
               The student can read cases, use the basic AI brief and legal news. Verifying the
-              student ID unlocks mentorship, the internship portal, attorney Q&amp;A and certificates.
+              student ID unlocks messaging attorneys, the internship portal, attorney Q&amp;A and certificates.
             </div>
           )}
 

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../Routes/app_routes.dart';
 import '../../../Services/api_service.dart';
+import '../../../Services/realtime_service.dart';
 import '../../../Services/session_provider.dart';
 import '../../../Utils/AppColors/app_colors.dart';
 import '../../../Utils/CountryData/country_catalog.dart';
@@ -23,7 +24,7 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with RealtimeRefresh {
   bool _notificationsEnabled = true;
   String _location = '';
   final String _about = '';
@@ -35,6 +36,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // This tab lives in the nav's IndexedStack, so it is built once per
+    // session: keep the counts live instead of loading them only at start.
+    listenRealtime({'cases', 'bookings'}, (_) => _loadStats());
     _loadStats();
   }
 
